@@ -36,7 +36,7 @@ YesConfirm: Да, подтвердить
 Done: Всё
 Confirmed: Ваша запись на дежурство *подтверждена*.\nПожалуйста, приходите вовремя, а если не можете прийти, сообщите нам об этом, нажав на кнопку ниже.\n*Мы спросим у вас, сможете ли вы прийти, за день до дежурства*.\nВы можете записаться ещё раз с помощью меню выше, или нажать Всё если это последняя запись.
 CantCome: Я не могу прийти, отменить запись
-SureCancel: Вы уверены, что не сможете прийтие и хотите отменить эту запись?
+SureCancel: Вы уверены, что не сможете прийти и хотите отменить эту запись?
 YesCancel: Да, я не смогу прийти
 NoIWillCome: Я смогу прийти
 YourSlotCancelled: Ваша запись *отменена*
@@ -45,20 +45,6 @@ YesIWillCome: Я приду!
 ConfirmReminder: Похоже, вы всё ещё не подтвердили ваше завтрашнее дежурство. Пожалуйста, сделайте это не позднее чем за два часа до его начала, нажав на кнопку в сообщении выше!
 ConfirmedShort: Ваше дежурство *подтверждено*. Спасибо!
 LastReminder: Ваше дежурство начинается через час.
-
-Locked: The schedules have been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedules.
-Unlock: Unlock
-Unlocked: The schedules have been unlocked. Use /lock to lock them back and generate the final schedule.
-Lock: Generate a new schedule
-VolunteerRequest user@Text: #{user} wants to become a volunteer
-GarageOpenDays garage@Text: Which day should the #{garage} garage be open?
-NewScheduleFor garage@Text: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
-SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.
-SlotStillNotConfirmed: Volunteer still has not confirmed this time slot:
-SlotCancel: Cancel this slot
-
-ScheduleIntro garageName@Text garageAddress@Text: Schedule for #{garageName} garage \(#{garageAddress}\):
-ScheduleTime from@Text to@Text:⏰ #{from} - #{to}\n
 
 Monday: Понедельник
 Tuesday: Вторник
