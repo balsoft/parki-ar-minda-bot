@@ -45,6 +45,7 @@ YesIWillCome: I will come
 ConfirmReminder: Looks like you still haven't confirmed your time slot for tomorrow. Please do so no later than *two hours* before the start of the slot using the confirm button in the message above.
 ConfirmedShort: Your time slot has been *confirmed*.
 LastReminder: Friendly reminder: you have a slot coming up in *1 hour*.
+OtherDuties: It looks like you have other duties at this time. Please, choose another time or day.
 
 Locked: The schedules have been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedules.
 Unlock: Unlock

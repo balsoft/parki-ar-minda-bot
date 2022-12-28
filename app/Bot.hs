@@ -10,7 +10,6 @@ import Control.Monad (forM, forM_, unless, void, when)
 import Control.Monad.Except (MonadError (catchError))
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT)
-import qualified Control.Monad.Trans.Reader
 import qualified Data.List as L
 import Data.Maybe (catMaybes, mapMaybe, maybeToList)
 import Data.Text as T (Text, intercalate, isPrefixOf, pack, replace, unpack)
@@ -356,43 +355,62 @@ confirmStep ::
   ScheduledSlot ->
   ClientM (Either CallbackQuery ())
 confirmStep langs pool chat@ChatChannel {..} slot@ScheduledSlot {..} = do
-  slotDesc <- runInPool pool $ getSlotDesc langs slot
-  msg <-
-    messageMessageId . responseResult
-      <$> sendMessage
-        ( sendMessageRequest
-            channelChatId
-            (tr langs MsgConfirm <> "\n" <> slotDesc)
-        )
-          { sendMessageReplyMarkup =
-              Just $
-                SomeInlineKeyboardMarkup $
-                  InlineKeyboardMarkup [[ikb (allGood <> tr langs MsgYesConfirm) "yes"]],
-            sendMessageParseMode = Just MarkdownV2
-          }
-  query <-
-    ( getCallbackQueryWithData channelUpdateChannel
-        <* deleteMessage channelChatId msg
-      )
-      >>= \case
-        CallbackQuery
-          { callbackQueryData = Just "yes",
-            callbackQueryMessage = Just Message {messageMessageId = mid}
-          }
-            | mid == msg -> do
-                Just OpenDay {..} <- runInPool pool $ get scheduledSlotDay
-                if not openDayAvailable
-                  then do
-                    msg' <- sendMessage (sendMessageRequest channelChatId (forbidden <> tr langs MsgDayUnavailable))
-                    getCallbackQueryWithData channelUpdateChannel
-                      <* deleteMessage
-                        channelChatId
-                        (messageMessageId $ responseResult msg')
-                  else do
-                    slotId <- runInPool pool $ insert slot
-                    slotConfirmedStep langs pool chat slot slotId
-        q -> pure q
-  pure $ Left query
+  otherDuties <-
+    runInPool pool $
+      mapM (getSlotDesc langs . entityVal)
+        =<< selectList
+          ( [ScheduledSlotDay ==. scheduledSlotDay, ScheduledSlotStartTime <=. scheduledSlotStartTime, ScheduledSlotEndTime >=. scheduledSlotStartTime]
+              ||. [ScheduledSlotDay ==. scheduledSlotDay, ScheduledSlotEndTime >=. scheduledSlotEndTime, ScheduledSlotStartTime <=. scheduledSlotEndTime]
+              ||. [ScheduledSlotDay ==. scheduledSlotDay, ScheduledSlotStartTime <=. scheduledSlotStartTime, ScheduledSlotEndTime >=. scheduledSlotEndTime]
+              ||. [ScheduledSlotDay ==. scheduledSlotDay, ScheduledSlotStartTime >=. scheduledSlotStartTime, ScheduledSlotEndTime <=. scheduledSlotEndTime]
+          )
+          []
+  if not $ null otherDuties
+    then do
+      void $
+        sendMessage
+          (sendMessageRequest channelChatId (tr langs MsgOtherDuties <> "\n\n" <> intercalate "\n\n" otherDuties))
+            { sendMessageParseMode = Just MarkdownV2
+            }
+      Left <$> getCallbackQueryWithData channelUpdateChannel
+    else do
+      slotDesc <- runInPool pool $ getSlotDesc langs slot
+      msg <-
+        messageMessageId . responseResult
+          <$> sendMessage
+            ( sendMessageRequest
+                channelChatId
+                (tr langs MsgConfirm <> "\n" <> slotDesc)
+            )
+              { sendMessageReplyMarkup =
+                  Just $
+                    SomeInlineKeyboardMarkup $
+                      InlineKeyboardMarkup [[ikb (allGood <> tr langs MsgYesConfirm) "yes"]],
+                sendMessageParseMode = Just MarkdownV2
+              }
+      query <-
+        ( getCallbackQueryWithData channelUpdateChannel
+            <* deleteMessage channelChatId msg
+          )
+          >>= \case
+            CallbackQuery
+              { callbackQueryData = Just "yes",
+                callbackQueryMessage = Just Message {messageMessageId = mid}
+              }
+                | mid == msg -> do
+                    Just OpenDay {..} <- runInPool pool $ get scheduledSlotDay
+                    if not openDayAvailable
+                      then do
+                        msg' <- sendMessage (sendMessageRequest channelChatId (forbidden <> tr langs MsgDayUnavailable))
+                        getCallbackQueryWithData channelUpdateChannel
+                          <* deleteMessage
+                            channelChatId
+                            (messageMessageId $ responseResult msg')
+                      else do
+                        slotId <- runInPool pool $ insert slot
+                        slotConfirmedStep langs pool chat slot slotId
+            q -> pure q
+      pure $ Left query
 
 cancelButton :: [Lang] -> ScheduledSlotId -> InlineKeyboardButton
 cancelButton langs slotId = ikb (tr langs MsgCantCome) ("cancel_" <> showSqlKey slotId)
@@ -460,7 +478,7 @@ list langs ChatChannel {channelChatId} volunteer pool = do
         [ScheduledSlotUser ==. volunteer, ScheduledSlotDay <-. days]
         []
   when (null slots) $ void $ send channelChatId langs MsgNoSlots
-  forM_ slots $ \(Entity slotId slot@ScheduledSlot {..}) -> do
+  forM_ slots $ \(Entity slotId slot) -> do
     slotDesc <- runInPool pool $ getSlotDesc langs slot
     sendMessage
       ( sendMessageRequest channelChatId slotDesc
