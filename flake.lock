@@ -1,0 +1,109 @@
+{
+  "nodes": {
+    "flake-utils": {
+      "locked": {
+        "lastModified": 1667395993,
+        "narHash": "sha256-nuEHfE/LcWyuSWnS8t12N1wc105Qtau+/OdUAjtQ0rA=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "5aed5285a952e0b949eb3ba02c12fa4fcfef535f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "flake-utils_2": {
+      "locked": {
+        "lastModified": 1667395993,
+        "narHash": "sha256-nuEHfE/LcWyuSWnS8t12N1wc105Qtau+/OdUAjtQ0rA=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "5aed5285a952e0b949eb3ba02c12fa4fcfef535f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1671810940,
+        "narHash": "sha256-Y/0PGVfnjbG60IfodMduLcK6WseaN/U2stm277dnAdg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "03e2c0a61c1c803a0711348277f8bd8deb138d66",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1671741567,
+        "narHash": "sha256-SSmlJkiSOkrM0CW6pASLAMs1+3TaAogmw0hwch+VvhQ=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "7ed9bbb62d807957938a46a136113cf18b7552fe",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": "nixpkgs",
+        "telegram-bot-monadic": "telegram-bot-monadic"
+      }
+    },
+    "telegram-bot-monadic": {
+      "inputs": {
+        "flake-utils": "flake-utils_2",
+        "nixpkgs": "nixpkgs_2",
+        "telegram-bot-simple": "telegram-bot-simple"
+      },
+      "locked": {
+        "lastModified": 1672247639,
+        "narHash": "sha256-zqor3Yf/Ezh1VC6gemD+nm1pxZut7fulDeNOmXZpqwY=",
+        "owner": "balsoft",
+        "repo": "telegram-bot-monadic",
+        "rev": "ac9ac7a353b44ea5c5b83758078df677b8691bc5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "balsoft",
+        "repo": "telegram-bot-monadic",
+        "type": "github"
+      }
+    },
+    "telegram-bot-simple": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1671981417,
+        "narHash": "sha256-Q9Pe6dCvCuGsRv3wmxqU8mCWhasQhRwDDIKO8XvdpJA=",
+        "owner": "fizruk",
+        "repo": "telegram-bot-simple",
+        "rev": "a0aa517586fd3bb2324a617d2d185c0b65e56398",
+        "type": "github"
+      },
+      "original": {
+        "owner": "fizruk",
+        "repo": "telegram-bot-simple",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
