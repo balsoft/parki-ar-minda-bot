@@ -21,7 +21,8 @@ Signup: Thank you for your interest! You can sign up for multiple duty slots usi
 ChooseGarage: Please choose a garage
 ChooseDay: Please choose a day
 NoDays: Looks like there are no open days scheduled for this garage. Try another garage.
-ChooseExistingSlot: There are some volunteers signed up for today already. You can join them or propose your own time slot.
+ChooseExistingSlot: There are some volunteers signed up for that day already. You can join them or propose your own time slot.
+OtherDutiesThisDay: Note that you already have some other duties this day:
 NewAppointment: I'd like to propose my own time slot
 ChooseStartTime: Please choose the start of your available time slot
 ChooseEndTime: Please choose the end of your available time slot

@@ -22,31 +22,30 @@
 
 module Persist where
 
-import Control.Monad.IO.Unlift (MonadIO(..), MonadUnliftIO(..))
+import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO (..))
+import Control.Monad.Logger (NoLoggingT (..))
+import Control.Monad.Trans.Reader (ReaderT (..))
+import qualified Data.Pool as Pool
 import Data.Text (Text, pack, unpack)
 import Data.Time
 import Database.Persist
 import Database.Persist.SqlBackend.Internal (SqlBackend)
 import Database.Persist.Sqlite
-  ( BackendKey(SqlBackendKey)
-  , ConnectionPool
-  , PersistFieldSql(..)
-  , createSqlitePool
-  , fromSqlKey
-  , runMigration
-  , toSqlKey
+  ( BackendKey (SqlBackendKey),
+    ConnectionPool,
+    PersistFieldSql (..),
+    createSqlitePool,
+    fromSqlKey,
+    runMigration,
+    toSqlKey,
   )
 import Database.Persist.TH
-  ( mkMigrate
-  , mkPersist
-  , persistLowerCase
-  , share
-  , sqlSettings
+  ( mkMigrate,
+    mkPersist,
+    persistLowerCase,
+    share,
+    sqlSettings,
   )
-
-import Control.Monad.Logger (NoLoggingT(..))
-import Control.Monad.Trans.Reader (ReaderT(..))
-import qualified Data.Pool as Pool
 
 instance PersistField DayOfWeek where
   toPersistValue = PersistText . pack . show

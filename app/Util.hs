@@ -10,13 +10,16 @@ import Control.Concurrent (Chan)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT)
 import Data.Functor ((<&>))
+import Data.Maybe (catMaybes)
 import Data.Text (Text, pack, unpack)
-import Data.Time (TimeOfDay, Day)
+import qualified Data.Text as T
+import Data.Time (Day, TimeOfDay)
 import Data.Time.Format.ISO8601
   ( FormatExtension (ExtendedFormat),
+    calendarFormat,
     formatParseM,
     formatShow,
-    hourMinuteFormat, calendarFormat,
+    hourMinuteFormat,
   )
 import Database.Persist
 import Database.Persist.Sqlite (SqlBackend)
@@ -26,8 +29,6 @@ import Servant.Client (ClientM)
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Shakespeare.I18N (Lang)
-import qualified Data.Text as T
-import Data.Maybe (catMaybes)
 
 instance MonadFail ClientM where
   fail e = liftIO (print e) >> liftIO (fail e)
@@ -92,27 +93,6 @@ parseHourMinutesM = formatParseM (hourMinuteFormat ExtendedFormat) . unpack
 parseGregorian :: MonadFail m => Text -> m Day
 parseGregorian = formatParseM (calendarFormat ExtendedFormat) . unpack
 
-checkIf :: Bool -> Text
-checkIf b =
-  if b
-    then "✔ "
-    else ""
-
-attention :: Text
-attention = "⚠ "
-
-allGood :: Text
-allGood = "✅ "
-
-forbidden :: Text
-forbidden = "🚫 "
-
-bad :: Text
-bad = "❌ "
-
-news :: Text
-news = "⚡ "
-
 chunksOf :: Int -> [a] -> [[a]]
 chunksOf n lst =
   case Prelude.splitAt n lst of
@@ -172,7 +152,6 @@ getSlotFullDesc langs ScheduledSlot {..} = do
               <> showHourMinutes scheduledSlotEndTime
           )
       )
-
 
 getAdmins :: ReaderT SqlBackend IO [TelegramUser]
 getAdmins = do

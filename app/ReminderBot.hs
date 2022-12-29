@@ -2,7 +2,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module ReminderBot (reminderBot) where
+module ReminderBot
+  ( reminderBot,
+  )
+where
 
 import Control.Monad (forM_, void, when)
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
@@ -13,6 +16,7 @@ import Database.Persist.Sqlite (ConnectionPool)
 import I18N
 import Persist
 import Servant.Client hiding (Response)
+import Symbols
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Util
