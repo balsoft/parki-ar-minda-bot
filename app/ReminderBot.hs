@@ -30,9 +30,10 @@ sendConfirmationRequests pool now = do
         Nothing -> pure []
         Just (Entity tomorrow' _) -> do
           selectList
-            [ScheduledSlotDay ==. tomorrow', ScheduledSlotConfirmed ==. Nothing]
+            [ScheduledSlotDay ==. tomorrow', ScheduledSlotState ==. ScheduledSlotCreated]
             []
   forM_ slotsConfirmationRequestNotSent $ \(Entity slotId slot@ScheduledSlot {..}) -> do
+    runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotAwaitingConfirmation False]
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
@@ -67,13 +68,14 @@ sendConfirmationReminders pool now = do
         Just (Entity tomorrow' _) -> do
           selectList
             [ ScheduledSlotDay ==. tomorrow',
-              ScheduledSlotConfirmed ==. Just False
+              ScheduledSlotState ==. ScheduledSlotAwaitingConfirmation False
             ]
             []
-  forM_ slotsNotConfirmed $ \(Entity _ ScheduledSlot {..}) -> do
+  forM_ slotsNotConfirmed $ \(Entity slotId ScheduledSlot {..}) -> do
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
+        update slotId [ScheduledSlotState =. ScheduledSlotAwaitingConfirmation True]
         get volunteerUser
     let langs = maybeToList telegramUserLang
     void $
@@ -95,7 +97,7 @@ notifyUnconfirmedSlots pool now = do
         Just (Entity today' _) -> do
           selectList
             [ ScheduledSlotDay ==. today',
-              ScheduledSlotConfirmed ==. Just False,
+              ScheduledSlotState <-. (ScheduledSlotAwaitingConfirmation <$> [True, False]),
               ScheduledSlotStartTime
                 <=. localTimeOfDay (addLocalTime (2 * 60 * 60) now)
             ]
@@ -137,10 +139,11 @@ sendLastReminders pool now = do
               ScheduledSlotReminderSent ==. False
             ]
             []
-  forM_ slotsComingUp $ \(Entity _ ScheduledSlot {..}) -> do
+  forM_ slotsComingUp $ \(Entity slotId ScheduledSlot {..}) -> do
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
+        update slotId [ScheduledSlotReminderSent =. True]
         get volunteerUser
     let langs = maybeToList telegramUserLang
     void $

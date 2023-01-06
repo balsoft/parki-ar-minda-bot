@@ -55,6 +55,20 @@ instance PersistField DayOfWeek where
 instance PersistFieldSql DayOfWeek where
   sqlType _ = SqlString
 
+data ScheduledSlotState
+  = ScheduledSlotCreated
+  | ScheduledSlotAwaitingConfirmation Bool
+  | ScheduledSlotConfirmed
+  deriving (Show, Read)
+
+instance PersistField ScheduledSlotState where
+  toPersistValue = PersistText . pack . show
+  fromPersistValue (PersistText t) = Right $ read $ unpack t
+  fromPersistValue _ = undefined
+
+instance PersistFieldSql ScheduledSlotState where
+  sqlType _ = SqlString
+
 runInPool :: MonadIO m => ConnectionPool -> ReaderT SqlBackend IO a -> m a
 runInPool pool = liftIO . Pool.withResource pool . runReaderT
 
@@ -85,6 +99,11 @@ OpenDayReminder
     sentOn Day
     UniqueOpenDayReminder sentOn
     deriving Show
+CallbackQueryMultiChat
+    chatId Int
+    msgId Int
+    callbackQuery Text
+    deriving Show
 Subscription
     user TelegramUserId OnDeleteCascade OnUpdateCascade
     UniqueSubscription user
@@ -104,7 +123,7 @@ ScheduledSlot
     startTime TimeOfDay
     endTime TimeOfDay
     user VolunteerId OnUpdateCascade
-    confirmed Bool Maybe
+    state ScheduledSlotState
     reminderSent Bool
     UniqueSlot day startTime endTime user
     deriving Show

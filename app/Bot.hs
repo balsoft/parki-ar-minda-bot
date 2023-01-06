@@ -14,7 +14,7 @@ import Control.Monad.Except (MonadError (catchError))
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT)
 import qualified Data.List as L
-import Data.Maybe (catMaybes, fromMaybe, mapMaybe, maybeToList)
+import Data.Maybe (catMaybes, mapMaybe, maybeToList)
 import Data.Text as T (Text, intercalate, isPrefixOf, pack, replace, unpack)
 import Data.Text.IO (hPutStrLn)
 import Data.Time
@@ -29,6 +29,22 @@ import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Shakespeare.I18N (Lang)
 import Util
+
+insertCallbackQueryMessage :: ConnectionPool -> Response Message -> ClientM (Response Message)
+insertCallbackQueryMessage pool r@(Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}, messageReplyMarkup = Just (InlineKeyboardMarkup buttons)}}) = runInPool pool $ do
+  forM_ (concat buttons) $ \(InlineKeyboardButton {..}) -> case inlineKeyboardButtonCallbackData of
+    Nothing -> pure ()
+    Just d -> void $ insert $ CallbackQueryMultiChat (fromIntegral cid) (fromIntegral mid) d
+  pure r
+insertCallbackQueryMessage _ r = pure r
+
+deleteCallbackQueryMessages :: ConnectionPool -> Text -> ClientM ()
+deleteCallbackQueryMessages pool d = do
+  messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. d] []
+  forM_ messages $ \(Entity _ CallbackQueryMultiChat {..}) -> do
+    void (deleteMessage (ChatId $ fromIntegral callbackQueryMultiChatChatId) (MessageId $ fromIntegral callbackQueryMultiChatMsgId))
+      `catchError` const (pure ())
+  runInPool pool $ deleteWhere [CallbackQueryMultiChatMsgId <-. fmap (callbackQueryMultiChatMsgId . entityVal) messages]
 
 -- | Generate a grid of buttons for choosing a time
 timeGrid ::
@@ -92,17 +108,17 @@ garageStep langs pool chat@ChatChannel {..} volunteer = do
               callbackQueryMessage = Just Message {messageMessageId}
             }
               | messageMessageId == msg -> do
-                let key = readSqlKey garage
-                void
-                  ( editMessageReplyMarkup
-                      (editMessageReplyMarkupRequest (Just $ ik $ grid (Just key)))
-                        { editMessageReplyMarkupChatId =
-                            Just $ SomeChatId channelChatId,
-                          editMessageReplyMarkupMessageId = Just msg
-                        }
-                  )
-                  `catchError` const (pure ())
-                fmap Right <$> dayStep langs pool chat volunteer key
+                  let key = readSqlKey garage
+                  void
+                    ( editMessageReplyMarkup
+                        (editMessageReplyMarkupRequest (Just $ ik $ grid (Just key)))
+                          { editMessageReplyMarkupChatId =
+                              Just $ SomeChatId channelChatId,
+                            editMessageReplyMarkupMessageId = Just msg
+                          }
+                    )
+                    `catchError` const (pure ())
+                  fmap Right <$> dayStep langs pool chat volunteer key
           _ -> pure $ Right $ Left q
     )
     <* deleteMessage channelChatId msg
@@ -175,19 +191,19 @@ dayStep langs pool chat@ChatChannel {..} volunteer garage = do
                   callbackQueryMessage = Just Message {messageMessageId}
                 }
                   | messageMessageId == msg -> do
-                    let key = readSqlKey day
-                    void
-                      ( editMessageReplyMarkup
-                          ( editMessageReplyMarkupRequest
-                              (Just $ ik $ grid (Just key))
-                          )
-                            { editMessageReplyMarkupChatId =
-                                Just $ SomeChatId channelChatId,
-                              editMessageReplyMarkupMessageId = Just msg
-                            }
-                      )
-                      `catchError` const (pure ())
-                    fmap Right <$> existingSlotsStep langs pool chat volunteer key
+                      let key = readSqlKey day
+                      void
+                        ( editMessageReplyMarkup
+                            ( editMessageReplyMarkupRequest
+                                (Just $ ik $ grid (Just key))
+                            )
+                              { editMessageReplyMarkupChatId =
+                                  Just $ SomeChatId channelChatId,
+                                editMessageReplyMarkupMessageId = Just msg
+                              }
+                        )
+                        `catchError` const (pure ())
+                      fmap Right <$> existingSlotsStep langs pool chat volunteer key
               _ -> pure $ Right $ Left q
         )
         <* deleteMessage channelChatId msg
@@ -216,7 +232,7 @@ existingSlotsStep langs pool chat@ChatChannel {..} volunteer day = do
       slots <-
         runInPool pool $
           mapM
-            ( \e@(Entity _ slot@ScheduledSlot {scheduledSlotUser}) -> do
+            ( \e@(Entity _ ScheduledSlot {scheduledSlotUser}) -> do
                 Just Volunteer {volunteerUser} <- get scheduledSlotUser
                 Just TelegramUser {telegramUserFullName, telegramUserUsername} <-
                   get volunteerUser
@@ -293,45 +309,45 @@ existingSlotsStep langs pool chat@ChatChannel {..} volunteer day = do
                         callbackQueryMessage = Just Message {messageMessageId}
                       }
                         | messageMessageId == msg -> do
-                          fmap Right
-                            <$> if slot == "new"
-                              then do
-                                void
-                                  ( editMessageReplyMarkup
-                                      ( editMessageReplyMarkupRequest
-                                          (Just $ ik $ grid (Just $ Left "new"))
-                                      )
-                                        { editMessageReplyMarkupChatId =
-                                            Just $ SomeChatId channelChatId,
-                                          editMessageReplyMarkupMessageId = Just msg
-                                        }
-                                  )
-                                  `catchError` const (pure ())
-                                startTimeStep langs pool chat volunteer day
-                              else do
-                                let key = readSqlKey slot
-                                void
-                                  ( editMessageReplyMarkup
-                                      ( editMessageReplyMarkupRequest
-                                          (Just $ ik $ grid (Just $ Right key))
-                                      )
-                                        { editMessageReplyMarkupChatId =
-                                            Just $ SomeChatId channelChatId,
-                                          editMessageReplyMarkupMessageId = Just msg
-                                        }
-                                  )
-                                  `catchError` const (pure ())
-                                Just slot' <-
-                                  runInPool pool $ get (readSqlKey slot)
-                                askConfirmStep
-                                  langs
-                                  pool
-                                  chat
-                                  slot'
-                                    { scheduledSlotUser = volunteer,
-                                      scheduledSlotConfirmed = Nothing,
-                                      scheduledSlotReminderSent = False
-                                    }
+                            fmap Right
+                              <$> if slot == "new"
+                                then do
+                                  void
+                                    ( editMessageReplyMarkup
+                                        ( editMessageReplyMarkupRequest
+                                            (Just $ ik $ grid (Just $ Left "new"))
+                                        )
+                                          { editMessageReplyMarkupChatId =
+                                              Just $ SomeChatId channelChatId,
+                                            editMessageReplyMarkupMessageId = Just msg
+                                          }
+                                    )
+                                    `catchError` const (pure ())
+                                  startTimeStep langs pool chat volunteer day
+                                else do
+                                  let key = readSqlKey slot
+                                  void
+                                    ( editMessageReplyMarkup
+                                        ( editMessageReplyMarkupRequest
+                                            (Just $ ik $ grid (Just $ Right key))
+                                        )
+                                          { editMessageReplyMarkupChatId =
+                                              Just $ SomeChatId channelChatId,
+                                            editMessageReplyMarkupMessageId = Just msg
+                                          }
+                                    )
+                                    `catchError` const (pure ())
+                                  Just slot' <-
+                                    runInPool pool $ get (readSqlKey slot)
+                                  askConfirmStep
+                                    langs
+                                    pool
+                                    chat
+                                    slot'
+                                      { scheduledSlotUser = volunteer,
+                                        scheduledSlotState = ScheduledSlotCreated,
+                                        scheduledSlotReminderSent = False
+                                      }
                     _ -> pure $ Right $ Left q
               )
               <* deleteMessage channelChatId msg
@@ -363,18 +379,18 @@ startTimeStep langs pool chat@ChatChannel {..} volunteer day = do
               callbackQueryMessage = Just Message {messageMessageId}
             }
               | messageMessageId == msg -> do
-                void
-                  ( editMessageReplyMarkup
-                      ( editMessageReplyMarkupRequest
-                          (Just $ ik $ timeGrid Nothing (Just time))
-                      )
-                        { editMessageReplyMarkupChatId =
-                            Just $ SomeChatId channelChatId,
-                          editMessageReplyMarkupMessageId = Just msg
-                        }
-                  )
-                  `catchError` const (pure ())
-                fmap Right <$> endTimeStep langs pool chat volunteer day time
+                  void
+                    ( editMessageReplyMarkup
+                        ( editMessageReplyMarkupRequest
+                            (Just $ ik $ timeGrid Nothing (Just time))
+                        )
+                          { editMessageReplyMarkupChatId =
+                              Just $ SomeChatId channelChatId,
+                            editMessageReplyMarkupMessageId = Just msg
+                          }
+                    )
+                    `catchError` const (pure ())
+                  fmap Right <$> endTimeStep langs pool chat volunteer day time
           _ -> pure $ Right $ Left q
     )
     <* deleteMessage channelChatId msg
@@ -403,32 +419,32 @@ endTimeStep langs pool chat@ChatChannel {..} volunteer day startTime = do
               callbackQueryMessage = Just Message {messageMessageId}
             }
               | messageMessageId == msg -> do
-                void
-                  ( editMessageReplyMarkup
-                      ( editMessageReplyMarkupRequest
-                          (Just $ ik $ timeGrid (Just startTime) (Just endTime))
-                      )
-                        { editMessageReplyMarkupChatId =
-                            Just $ SomeChatId channelChatId,
-                          editMessageReplyMarkupMessageId = Just msg
+                  void
+                    ( editMessageReplyMarkup
+                        ( editMessageReplyMarkupRequest
+                            (Just $ ik $ timeGrid (Just startTime) (Just endTime))
+                        )
+                          { editMessageReplyMarkupChatId =
+                              Just $ SomeChatId channelChatId,
+                            editMessageReplyMarkupMessageId = Just msg
+                          }
+                    )
+                    `catchError` const (pure ())
+                  scheduledSlotStartTime <- parseHourMinutesM startTime
+                  scheduledSlotEndTime <- parseHourMinutesM endTime
+                  fmap Right
+                    <$> askConfirmStep
+                      langs
+                      pool
+                      chat
+                      ScheduledSlot
+                        { scheduledSlotDay = day,
+                          scheduledSlotStartTime,
+                          scheduledSlotEndTime,
+                          scheduledSlotUser = volunteer,
+                          scheduledSlotState = ScheduledSlotCreated,
+                          scheduledSlotReminderSent = False
                         }
-                  )
-                  `catchError` const (pure ())
-                scheduledSlotStartTime <- parseHourMinutesM startTime
-                scheduledSlotEndTime <- parseHourMinutesM endTime
-                fmap Right
-                  <$> askConfirmStep
-                    langs
-                    pool
-                    chat
-                    ScheduledSlot
-                      { scheduledSlotDay = day,
-                        scheduledSlotStartTime,
-                        scheduledSlotEndTime,
-                        scheduledSlotUser = volunteer,
-                        scheduledSlotConfirmed = Nothing,
-                        scheduledSlotReminderSent = False
-                      }
           _ -> pure $ Right $ Left q
     )
     <* deleteMessage channelChatId msg
@@ -512,22 +528,22 @@ askConfirmStep langs pool chat@ChatChannel {..} slot@ScheduledSlot {..} = do
                 callbackQueryMessage = Just Message {messageMessageId = mid}
               }
                 | mid == msg -> do
-                  Just OpenDay {..} <- runInPool pool $ get scheduledSlotDay
-                  if not openDayAvailable
-                    then do
-                      msg' <-
-                        sendMessage
-                          ( sendMessageRequest
-                              channelChatId
-                              (forbidden <> tr langs MsgDayUnavailable)
-                          )
-                      getCallbackQueryWithData channelUpdateChannel
-                        <* deleteMessage
-                          channelChatId
-                          (messageMessageId $ responseResult msg')
-                    else do
-                      slotId <- runInPool pool $ insert slot
-                      slotConfirmedStep langs pool chat slot slotId
+                    Just OpenDay {..} <- runInPool pool $ get scheduledSlotDay
+                    if not openDayAvailable
+                      then do
+                        msg' <-
+                          sendMessage
+                            ( sendMessageRequest
+                                channelChatId
+                                (forbidden <> tr langs MsgDayUnavailable)
+                            )
+                        getCallbackQueryWithData channelUpdateChannel
+                          <* deleteMessage
+                            channelChatId
+                            (messageMessageId $ responseResult msg')
+                      else do
+                        slotId <- runInPool pool $ insert slot
+                        slotConfirmedStep langs pool chat slot slotId
             q -> pure q
       pure $ Left query
 
@@ -560,10 +576,10 @@ slotConfirmedStep langs pool chat@ChatChannel {..} slot slotId = do
     ( getCallbackQueryWithData channelUpdateChannel >>= \case
         CallbackQuery {callbackQueryData = Just d}
           | d == ("cancel_" <> showSqlKey slotId) -> do
-            cancelled <- askCancelSlot langs pool chat msg' slotId
-            if cancelled
-              then Right <$> getCallbackQueryWithData channelUpdateChannel
-              else pure (Left ())
+              cancelled <- askCancelSlot langs pool chat msg' slotId
+              if cancelled
+                then Right <$> getCallbackQueryWithData channelUpdateChannel
+                else pure (Left ())
         q -> do
           void $
             editMessageText
@@ -640,22 +656,21 @@ askDeleteUser langs chat@ChatChannel {channelChatId} volunteer pool = do
   untilRight (getNewMessage chat) (const $ pure ()) >>= \case
     Message {messageText = Just txt}
       | txt == tr langs MsgIAmSure -> do
-        deleteUser pool volunteer
-        void $ send channelChatId langs MsgDeleted
+          deleteUser pool volunteer
+          void $ send channelChatId langs MsgDeleted
     _ -> void $ send channelChatId langs MsgNotDeleting
 
 cancelSlot :: ConnectionPool -> ScheduledSlotId -> ClientM ()
 cancelSlot pool slotId = do
-  (slotFullDesc, slotDesc, dayAvailable, langs, TelegramUser {..}) <-
+  (slot, slotDesc, dayAvailable, langs, TelegramUser {..}) <-
     runInPool pool $ do
       Just slot <- get slotId
       Just Volunteer {..} <- get $ scheduledSlotUser slot
       Just OpenDay {..} <- get $ scheduledSlotDay slot
       Just user@TelegramUser {..} <- get volunteerUser
       let langs = maybeToList telegramUserLang
-      fullDesc <- getSlotFullDesc langs slot
       desc <- getSlotDesc langs slot
-      pure (fullDesc, desc, openDayAvailable, langs, user)
+      pure (slot, desc, openDayAvailable, langs, user)
   runInPool pool $ delete slotId
   void $
     sendMessage
@@ -668,16 +683,17 @@ cancelSlot pool slotId = do
   admins <- runInPool pool getAdmins
   unless dayAvailable $
     forM_ admins $ \(TelegramUser auid lang _ _) -> do
-      let langs = maybeToList lang
+      let adminLangs = maybeToList lang
+      slotFullDesc <- runInPool pool $ getSlotFullDesc adminLangs slot
       void $
         sendMessage
           ( sendMessageRequest
               (ChatId (fromIntegral auid))
-              (attention <> tr langs MsgSlotCancelled <> "\n" <> slotFullDesc)
+              (attention <> tr adminLangs MsgSlotCancelled <> "\n" <> slotFullDesc)
           )
             { sendMessageParseMode = Just MarkdownV2,
               sendMessageReplyMarkup =
-                Just (ik [[ikb (tr langs MsgLock) "lock"]])
+                Just (ik [[ikb (tr adminLangs MsgLock) "lock"]])
             }
 
 askCancelSlot ::
@@ -715,14 +731,14 @@ askCancelSlot langs pool ChatChannel {..} originalMsgId slotId = do
                 callbackQueryMessage = Just msg'
               }
               | messageMessageId msg' == messageMessageId msg -> do
-                void $
-                  answerCallbackQuery
-                    (answerCallbackQueryRequest (callbackQueryId q))
-                pure $
-                  case txt of
-                    "will_come" -> Right False
-                    "cancel" -> Right True
-                    _ -> Left ()
+                  void $
+                    answerCallbackQuery
+                      (answerCallbackQueryRequest (callbackQueryId q))
+                  pure $
+                    case txt of
+                      "will_come" -> Right False
+                      "cancel" -> Right True
+                      _ -> Left ()
           _ -> pure (Left ())
       )
   void $ deleteMessage channelChatId (messageMessageId msg)
@@ -742,7 +758,7 @@ confirmSlot langs pool ChatChannel {..} originalMsgId slotId = do
   Just slot <- runInPool pool $ get slotId
   slotDesc <- runInPool pool $ getSlotDesc langs slot
   void $ deleteMessage channelChatId originalMsgId
-  runInPool pool $ update slotId [ScheduledSlotConfirmed =. Just True]
+  runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotConfirmed]
   void $
     sendMessage
       ( sendMessageRequest
@@ -761,24 +777,25 @@ askForPermission pool User {userId = UserId uid} = do
   forM_ admins $ \(TelegramUser auid lang _ _) -> do
     let langs = maybeToList lang
     void $
-      sendMessage
-        ( sendMessageRequest
-            (ChatId (fromIntegral auid))
-            (tr langs $ MsgVolunteerRequest $ renderUser user)
-        )
-          { sendMessageParseMode = Just MarkdownV2,
-            sendMessageReplyMarkup =
-              Just $
-                ik
-                  [ [ ikb
-                        (allGood <> tr langs MsgAllow)
-                        ("allow_" <> showSqlKey tuid),
-                      ikb
-                        (bad <> tr langs MsgDecline)
-                        ("decline_" <> showSqlKey tuid)
+      insertCallbackQueryMessage pool
+        =<< sendMessage
+          ( sendMessageRequest
+              (ChatId (fromIntegral auid))
+              (tr langs $ MsgVolunteerRequest $ renderUser user)
+          )
+            { sendMessageParseMode = Just MarkdownV2,
+              sendMessageReplyMarkup =
+                Just $
+                  ik
+                    [ [ ikb
+                          (allGood <> tr langs MsgAllow)
+                          ("allow_" <> showSqlKey tuid),
+                        ikb
+                          (bad <> tr langs MsgDecline)
+                          ("decline_" <> showSqlKey tuid)
+                      ]
                     ]
-                  ]
-          }
+            }
 
 allowVolunteer :: ConnectionPool -> TelegramUserId -> ClientM ()
 allowVolunteer pool tuid = do
@@ -791,21 +808,23 @@ allowVolunteer pool tuid = do
   forM_ admins $ \(TelegramUser auid lang _ _) -> do
     let langs = maybeToList lang
     void $
-      sendMessage
-        ( sendMessageRequest
-            (ChatId (fromIntegral auid))
-            (tr langs $ MsgNewVolunteer $ renderUser user)
-        )
-          { sendMessageParseMode = Just MarkdownV2,
-            sendMessageReplyMarkup =
-              Just $
-                ik
-                  [ [ ikb
-                        (forbidden <> tr langs MsgBan)
-                        ("ban_" <> showSqlKey tuid)
+      insertCallbackQueryMessage pool
+        =<< sendMessage
+          ( sendMessageRequest
+              (ChatId (fromIntegral auid))
+              (tr langs $ MsgNewVolunteer $ renderUser user)
+          )
+            { sendMessageParseMode = Just MarkdownV2,
+              sendMessageReplyMarkup =
+                Just $
+                  ik
+                    [ [ ikb
+                          (forbidden <> tr langs MsgBan)
+                          ("ban_" <> showSqlKey tuid)
+                      ]
                     ]
-                  ]
-          }
+            }
+  deleteCallbackQueryMessages pool ("allow_" <> showSqlKey tuid)
   void $
     sendMessage
       ( sendMessageRequest
@@ -824,6 +843,7 @@ banVolunteer pool tuid = do
       admins <- getAdmins
       pure (admins, user, volunteer)
   deleteUser pool (entityKey volunteer)
+  deleteCallbackQueryMessages pool ("ban_" <> showSqlKey tuid)
   forM_ admins $ \(TelegramUser auid lang _ _) -> do
     let langs = maybeToList lang
     sendMessage
@@ -866,7 +886,7 @@ inlinePoll ChatChannel {..} acceptable question grid initial = do
             ( getUpdate channelUpdateChannel >>= \case
                 SomeNewCallbackQuery c@CallbackQuery {callbackQueryMessage = Just msg'}
                   | messageMessageId msg' == messageMessageId msg ->
-                    pure $ Right c
+                      pure $ Right c
                 _ -> pure $ Left ()
             )
         let a =
@@ -879,24 +899,24 @@ inlinePoll ChatChannel {..} acceptable question grid initial = do
           Just "cancel" -> pure Nothing
           Just d
             | any (any ((d ==) . snd)) grid -> do
-              let lst' =
-                    if d `elem` lst
-                      then L.delete d lst
-                      else d : lst
-              void
-                ( editMessageReplyMarkup
-                    ( editMessageReplyMarkupRequest
-                        (Just $ inlinePollMarkup (acceptable lst') grid lst')
-                    )
-                      { editMessageReplyMarkupMessageId =
-                          Just $ messageMessageId msg,
-                        editMessageReplyMarkupChatId =
-                          Just $ SomeChatId channelChatId
-                      }
-                )
-                `catchError` const (pure ())
-              _ <- a
-              getPollResult lst'
+                let lst' =
+                      if d `elem` lst
+                        then L.delete d lst
+                        else d : lst
+                void
+                  ( editMessageReplyMarkup
+                      ( editMessageReplyMarkupRequest
+                          (Just $ inlinePollMarkup (acceptable lst') grid lst')
+                      )
+                        { editMessageReplyMarkupMessageId =
+                            Just $ messageMessageId msg,
+                          editMessageReplyMarkupChatId =
+                            Just $ SomeChatId channelChatId
+                        }
+                  )
+                  `catchError` const (pure ())
+                _ <- a
+                getPollResult lst'
           _ -> a >> getPollResult lst
   getPollResult initial
 
@@ -908,6 +928,38 @@ getSubscriptions = do
         fmap (adminUser . entityVal) admins
           ++ fmap (subscriptionUser . entityVal) subscriptions
   catMaybes <$> mapM get ids
+
+sendOpenDaySchedule :: ConnectionPool -> Text -> [Entity OpenDay] -> ClientM ()
+sendOpenDaySchedule pool garageName days = do
+  subs <-
+    runInPool pool $ do
+      getSubscriptions
+  forM_ subs $ \(TelegramUser uid lang _ _) -> do
+    let langs = maybeToList lang
+    catchError
+      ( do
+          Response {responseResult = Message {messageMessageId = MessageId mid}} <-
+            sendMessage
+              ( sendMessageRequest
+                  (ChatId (fromIntegral uid))
+                  ( news
+                      <> tr (maybeToList lang) (MsgNewScheduleFor garageName)
+                  )
+              )
+                { sendMessageParseMode = Just MarkdownV2,
+                  sendMessageReplyMarkup =
+                    Just $
+                      ik
+                        [ [ ikb
+                              (showDay langs openDayDate)
+                              ("signup_" <> showSqlKey did)
+                          ]
+                          | Entity did OpenDay {..} <- days
+                        ]
+                }
+          void $ runInPool pool $ insert $ CallbackQueryMultiChat uid (fromIntegral mid) "signup"
+      )
+      (liftIO . hPrint stderr)
 
 makeSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> ClientM ()
 makeSchedule langs pool chat = do
@@ -931,43 +983,19 @@ makeSchedule langs pool chat = do
       >>= ( \case
               Nothing -> pure ()
               Just days -> do
-                subs <-
-                  runInPool pool $ do
-                    deleteWhere [DefaultOpenDayGarage ==. gid]
-                    mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
-                    deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
-                    mapM_
-                      ( \day ->
-                          upsertBy
-                            (UniqueDay day gid)
-                            (OpenDay gid day True)
-                            [OpenDayAvailable =. True]
-                      )
-                      days
-                    getSubscriptions
-                forM_ subs $ \(TelegramUser uid lang _ _) -> do
-                  catchError
-                    ( void $
-                        sendMessage
-                          ( sendMessageRequest
-                              (ChatId (fromIntegral uid))
-                              ( news
-                                  <> tr (maybeToList lang) (MsgNewScheduleFor garageName)
-                              )
-                          )
-                            { sendMessageParseMode = Just MarkdownV2,
-                              sendMessageReplyMarkup =
-                                Just $
-                                  ik
-                                    [ [ ikb
-                                          (showDay langs date)
-                                          ("signup" <> pack (show (garageName, date)))
-                                      ]
-                                      | date <- days
-                                    ]
-                            }
+                days <- runInPool pool $ do
+                  deleteWhere [DefaultOpenDayGarage ==. gid]
+                  mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
+                  deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
+                  mapM
+                    ( \day ->
+                        upsertBy
+                          (UniqueDay day gid)
+                          (OpenDay gid day True)
+                          [OpenDayAvailable =. True]
                     )
-                    (liftIO . hPrint stderr)
+                    days
+                sendOpenDaySchedule pool garageName days
           )
         . fmap (L.sort . mapMaybe parseGregorian)
 
@@ -995,6 +1023,7 @@ renderSchedule langs s =
 
 lockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> ClientM ()
 lockSchedule langs pool ChatChannel {..} = do
+  deleteCallbackQueryMessages pool "signup"
   void $
     sendMessage
       (sendMessageRequest channelChatId (tr langs MsgLocked))
@@ -1023,13 +1052,13 @@ lockSchedule langs pool ChatChannel {..} = do
           )
     subscriptions <- runInPool pool getSubscriptions
     forM_ subscriptions $ \(TelegramUser suid lang _ _) -> do
-      let langs = maybeToList lang
+      let subscriptionLangs = maybeToList lang
       sendMessage
         ( sendMessageRequest
             (ChatId (fromIntegral suid))
-            ( tr langs (MsgScheduleIntro garageName garageAddress)
+            ( tr subscriptionLangs (MsgScheduleIntro garageName garageAddress)
                 <> "\n\n"
-                <> renderSchedule langs openDaysWithSlots
+                <> renderSchedule subscriptionLangs openDaysWithSlots
             )
         )
           { sendMessageParseMode = Just MarkdownV2
@@ -1046,9 +1075,10 @@ unlockSchedule langs pool ChatChannel {..} = do
   now <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
   let nextWeek =
         Prelude.take 7 $ dropWhile ((/= Monday) . dayOfWeek) $ drop 1 [now ..]
-  forM_ garages $ \(Entity gid _) -> do
+  forM_ garages $ \(Entity gid Garage {..}) -> do
     let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
-    runInPool pool $ updateWhere selector [OpenDayAvailable =. True]
+    days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
+    sendOpenDaySchedule pool garageName days
 
 knownLangs :: [Text]
 knownLangs = ["en", "ru"]
@@ -1137,18 +1167,17 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = do
                 case txt of
                   _
                     | "allow_" `isPrefixOf` txt -> do
-                      allowVolunteer pool $
-                        read $
-                          unpack $
+                        allowVolunteer pool $
+                          readSqlKey $
                             T.replace "allow_" "" txt
-                      void $ deleteMessage channelChatId messageMessageId
+                        void $ deleteMessage channelChatId messageMessageId
                     | "decline_" `isPrefixOf` txt ->
-                      void $ deleteMessage channelChatId messageMessageId
+                        void $ deleteMessage channelChatId messageMessageId
                     | "ban_" `isPrefixOf` txt ->
-                      banVolunteer pool $ read $ unpack $ T.replace "ban_" "" txt
+                        banVolunteer pool $ read $ unpack $ T.replace "ban_" "" txt
                     | "cancel_" `isPrefixOf` txt -> do
-                      void $ deleteMessage channelChatId messageMessageId
-                      cancelSlot pool $ readSqlKey $ T.replace "cancel_" "" txt
+                        void $ deleteMessage channelChatId messageMessageId
+                        cancelSlot pool $ readSqlKey $ T.replace "cancel_" "" txt
                     | txt == "setopendays" -> makeSchedule langs pool chat
                     | txt == "lock" -> lockSchedule langs pool chat
                     | txt == "unlock" -> unlockSchedule langs pool chat
@@ -1180,35 +1209,35 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = do
                     case txt of
                       _
                         | "signup" `isPrefixOf` txt -> do
-                          let (garageName, date) =
-                                read $ unpack $ T.replace "signup" "" txt
-                          Just (Entity day _) <-
-                            runInPool pool $ do
-                              Just (Entity garage _) <-
-                                getBy $ UniqueGarage garageName
-                              getBy $ UniqueDay date garage
-                          Message {messageMessageId = msg} <-
-                            responseResult
-                              <$> sendMessage
-                                ( sendMessageRequest
-                                    channelChatId
-                                    (tr langs MsgSignup)
-                                )
-                                  { sendMessageParseMode = Just MarkdownV2,
-                                    sendMessageReplyMarkup =
-                                      Just $ ik [[ikb "Cancel" "cancel"]]
-                                  }
-                          void $ existingSlotsStep langs pool chat volunteer day
-                          void $ deleteMessage channelChatId msg
+                            let (garageName, date) =
+                                  read $ unpack $ T.replace "signup" "" txt
+                            Just (Entity day _) <-
+                              runInPool pool $ do
+                                Just (Entity garage _) <-
+                                  getBy $ UniqueGarage garageName
+                                getBy $ UniqueDay date garage
+                            Message {messageMessageId = msg} <-
+                              responseResult
+                                <$> sendMessage
+                                  ( sendMessageRequest
+                                      channelChatId
+                                      (tr langs MsgSignup)
+                                  )
+                                    { sendMessageParseMode = Just MarkdownV2,
+                                      sendMessageReplyMarkup =
+                                        Just $ ik [[ikb "Cancel" "cancel"]]
+                                    }
+                            void $ existingSlotsStep langs pool chat volunteer day
+                            void $ deleteMessage channelChatId msg
                         | "cancel_" `isPrefixOf` txt ->
-                          void $
-                            askCancelSlot langs pool chat messageMessageId $
-                              readSqlKey $
-                                T.replace "cancel_" "" txt
+                            void $
+                              askCancelSlot langs pool chat messageMessageId $
+                                readSqlKey $
+                                  T.replace "cancel_" "" txt
                         | "confirm_" `isPrefixOf` txt ->
-                          confirmSlot langs pool chat messageMessageId $
-                            readSqlKey $
-                              T.replace "confirm_" "" txt
+                            confirmSlot langs pool chat messageMessageId $
+                              readSqlKey $
+                                T.replace "confirm_" "" txt
                       _ -> pure ()
                 _ -> pure ()
             Nothing ->
