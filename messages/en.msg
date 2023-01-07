@@ -57,9 +57,9 @@ AnotherGarage: Sign up for another garage
 SameGarage: Sign up for the same garage
 CancelCreate: Cancel the other duties and create this one
 
-Locked: The schedules have been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedules.
+Locked garageName@Text: The schedule for #{garageName} has been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedule.
 Unlock: Unlock
-Unlocked: The schedules have been unlocked. Use /lock to lock them back and generate the final schedule.
+Unlocked garageName@Text: The schedule for #{garageName} has been unlocked. Use /lock to lock it back and generate the final schedule.
 Lock: Generate a new schedule
 GarageOpenDays garage@Text: Which day should the #{garage} garage be open?
 WorkingScheduleFor garage@Text: __Working schedule for #{garage}__:
@@ -67,8 +67,8 @@ NewScheduleFor garage@Text: A new schedule for #{garage}! You can use /signup or
 SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.
 SlotStillNotConfirmed: Volunteer still has not confirmed this time slot:
 SlotCancel: Cancel this slot
-SetOpenDaysReminder start@Text: It's time to set the open days for garages for the next week (starting #{start})!
-SetOpenDays: Set the open days
+SetOpenDaysReminder start@Text: It's time to set the open days for garages for the next week \(starting #{start}\)!
+SetOpenDays garageName@Text: Set the #{garageName} open days
 VolunteerRequest user@Text: #{user} wants to become a volunteer
 Allow: Allow
 Decline: Decline

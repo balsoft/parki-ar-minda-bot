@@ -38,7 +38,7 @@ main = do
       forever $ do
         void $
           async $
-            catchError (void $ defaultRunBot token' $ reminderBot pool) print
+            catchError (print =<< defaultRunBot token' (reminderBot pool)) print
         threadDelay $ 60 * 1000000
   void $
     runTelegramIntegrationBot

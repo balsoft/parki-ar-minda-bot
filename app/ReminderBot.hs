@@ -10,6 +10,7 @@ where
 import Control.Monad (forM_, void, when)
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
 import Data.Maybe (maybeToList)
+import Data.Text (pack)
 import Data.Time
 import Database.Persist
 import Database.Persist.Sqlite (ConnectionPool)
@@ -20,7 +21,6 @@ import Symbols
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Util
-import Data.Text (pack)
 
 sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationRequests pool now = do
@@ -159,6 +159,7 @@ sendLastReminders pool now = do
 sendOpenDayReminder :: ConnectionPool -> LocalTime -> ClientM ()
 sendOpenDayReminder pool now = do
   let today = localDay now
+  garages <- runInPool pool (selectList [] [])
   runInPool pool (selectFirst [] [Desc OpenDayReminderSentOn]) >>= \case
     Just (Entity _ OpenDayReminder {..})
       | openDayReminderSentOn == today -> pure ()
@@ -175,7 +176,7 @@ sendOpenDayReminder pool now = do
             )
               { sendMessageParseMode = Just MarkdownV2,
                 sendMessageReplyMarkup =
-                  Just $ ik [[ikb (tr langs MsgSetOpenDays) ("setopendays_" <> pack (showGregorian (nextWeekStart today)))]]
+                  Just $ ik [[ikb (tr langs (MsgSetOpenDays garageName)) ("setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))] | (Entity gid Garage {..}) <- garages]
               }
 
 reminderBot :: ConnectionPool -> ClientM ()

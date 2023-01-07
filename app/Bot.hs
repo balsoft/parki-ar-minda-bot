@@ -204,7 +204,8 @@ mySlotsMsg langs pool day volunteer = runInPool pool $ do
           <> intercalate "\n\n" mySlots
       else ""
 
-othersSlots :: (MonadIO m, MonadFail m) =>
+othersSlots ::
+  (MonadIO m, MonadFail m) =>
   OpenDayId ->
   VolunteerId ->
   ReaderT SqlBackend m [(Entity ScheduledSlot, Text)]
@@ -329,7 +330,7 @@ askCreateStep ::
 askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime endTime = do
   otherDuties <- runInPool pool $ getMySlots langs day volunteer
   others <- runInPool pool $ othersSlots day volunteer
-  let othersMessage = if null others then "" else "\n\n" <> people <> " " <> tr langs MsgOtherVolunteers <> "\n\n" <> intercalate "\n" [ v <> "\\: " <> showHourMinutes scheduledSlotStartTime <> "—" <> showHourMinutes scheduledSlotEndTime | (Entity _ ScheduledSlot {..}, v) <- others]
+  let othersMessage = if null others then "" else "\n\n" <> people <> " " <> tr langs MsgOtherVolunteers <> "\n\n" <> intercalate "\n" [v <> "\\: " <> showHourMinutes scheduledSlotStartTime <> "—" <> showHourMinutes scheduledSlotEndTime | (Entity _ ScheduledSlot {..}, v) <- others]
   Just OpenDay {openDayGarage} <- runInPool pool $ get day
   mySlots <- mySlotsMsg langs pool day volunteer
   let extraButtons = [[ikb (clock <> tr langs MsgChangeStartTime) ("day_" <> showSqlKey day)], [ikb (calendar <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [ikb (house <> tr langs MsgChangeGarage) "signup"], [cancelButton langs]]
@@ -759,7 +760,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
                   editMessageTextParseMode = Just MarkdownV2
                 }
       (_, msgs) -> do
-        MessageId mid <- messageMessageId . responseResult <$> sendMessage (sendMessageRequest (ChatId (fromIntegral auid)) t) {sendMessageParseMode = Just MarkdownV2}
+        MessageId mid <- messageMessageId . responseResult <$> sendMessage (sendMessageRequest (ChatId (fromIntegral auid)) t) {sendMessageParseMode = Just MarkdownV2, sendMessageReplyMarkup = Just $ ik [[ikb (tr langs MsgLock) ("lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]}
         void $ runInPool pool $ insert $ CallbackQueryMultiChat auid (fromIntegral mid) s
         forM_ msgs $ \(Entity _ CallbackQueryMultiChat {..}) -> do
           flip catchError (liftIO . print) $ void $ deleteMessage (ChatId (fromIntegral auid)) (MessageId $ fromIntegral callbackQueryMultiChatMsgId)
@@ -793,48 +794,47 @@ sendOpenDaySchedule pool weekStart garage days = do
                           | Entity did OpenDay {..} <- days
                         ]
                 }
-          void $ runInPool pool $ insert $ CallbackQueryMultiChat uid (fromIntegral mid) ("schedule_" <> pack (showGregorian weekStart))
+          void $ runInPool pool $ insert $ CallbackQueryMultiChat uid (fromIntegral mid) ("schedule_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
       )
       (liftIO . hPrint stderr)
 
-makeSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> ClientM ()
-makeSchedule langs pool chat day' = do
+makeSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()
+makeSchedule langs pool chat day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
-  garages <- runInPool pool (selectList [] [])
+  Just Garage {..} <- runInPool pool $ get gid
   let nextWeek = take 7 [day ..]
-  forM_ garages $ \(Entity gid Garage {..}) -> do
-    defaultDays <-
-      fmap (defaultOpenDayDayOfWeek . entityVal)
-        <$> runInPool pool (selectList [DefaultOpenDayGarage ==. gid] [])
-    let defaultDays' =
-          pack . showGregorian
-            <$> Prelude.filter ((`elem` defaultDays) . dayOfWeek) nextWeek
-    inlinePoll
-      chat
-      (const True)
-      (tr langs (MsgGarageOpenDays garageName))
-      [[(showDay langs d, pack $ showGregorian d)] | d <- nextWeek]
-      defaultDays'
-      >>= ( \case
-              Nothing -> pure ()
-              Just days -> do
-                days <- runInPool pool $ do
-                  deleteWhere [DefaultOpenDayGarage ==. gid]
-                  mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
-                  deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
-                  mapM
-                    ( \day ->
-                        upsertBy
-                          (UniqueDay day gid)
-                          (OpenDay gid day True)
-                          [OpenDayAvailable =. True]
-                    )
-                    days
-                sendOpenDaySchedule pool (head nextWeek) gid days
-          )
-        . fmap (L.sort . mapMaybe parseGregorian)
+  defaultDays <-
+    fmap (defaultOpenDayDayOfWeek . entityVal)
+      <$> runInPool pool (selectList [DefaultOpenDayGarage ==. gid] [])
+  let defaultDays' =
+        pack . showGregorian
+          <$> Prelude.filter ((`elem` defaultDays) . dayOfWeek) nextWeek
+  inlinePoll
+    chat
+    (const True)
+    (tr langs (MsgGarageOpenDays garageName))
+    [[(showDay langs d, pack $ showGregorian d)] | d <- nextWeek]
+    defaultDays'
+    >>= ( \case
+            Nothing -> pure ()
+            Just days -> do
+              days <- runInPool pool $ do
+                deleteWhere [DefaultOpenDayGarage ==. gid]
+                mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
+                deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
+                mapM
+                  ( \day ->
+                      upsertBy
+                        (UniqueDay day gid)
+                        (OpenDay gid day True)
+                        [OpenDayAvailable =. True]
+                  )
+                  days
+              sendOpenDaySchedule pool day gid days
+        )
+      . fmap (L.sort . mapMaybe parseGregorian)
 
 -- | Merge intersecting intervals together
 -- | This assumes that all intervals are valid, i.e. (start, end) | start <= end
@@ -858,66 +858,65 @@ renderSchedule langs s =
         times /= []
     ]
 
-lockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> ClientM ()
-lockSchedule langs pool ChatChannel {..} day' = do
+lockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()
+lockSchedule langs pool ChatChannel {..} day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
-  deleteCallbackQueryMessages pool ("schedule_" <> pack (showGregorian day))
+  Just Garage {..} <- runInPool pool $ get gid
+  deleteCallbackQueryMessages pool ("schedule_" <> showSqlKey gid <> "_" <> pack (showGregorian day))
   void $
     sendMessage
-      (sendMessageRequest channelChatId (tr langs MsgLocked))
+      (sendMessageRequest channelChatId (tr langs (MsgLocked garageName)))
         { sendMessageParseMode = Just MarkdownV2,
           sendMessageReplyMarkup =
-            Just $ ik [[ikb (tr langs MsgUnlock) ("unlock_" <> pack (showGregorian day))]]
+            Just $ ik [[ikb (tr langs MsgUnlock) ("unlock_" <> showSqlKey gid <> "_" <> pack (showGregorian day))]]
         }
-  garages <- runInPool pool (selectList [] [])
   let nextWeek = take 7 [day ..]
-  forM_ garages $ \(Entity gid Garage {..}) -> do
-    let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
-    openDays <-
-      runInPool pool $ do
-        updateWhere selector [OpenDayAvailable =. False]
-        selectList selector []
-    openDaysWithSlots <-
-      forM openDays $ \(Entity day OpenDay {..}) -> do
-        slots <- runInPool pool $ selectList [ScheduledSlotDay ==. day] []
-        pure
-          ( openDayDate,
-            [ (scheduledSlotStartTime, scheduledSlotEndTime)
-              | Entity _ ScheduledSlot {..} <- slots
-            ]
-          )
-    subscriptions <- runInPool pool getSubscriptions
-    forM_ subscriptions $ \(TelegramUser suid lang _ _) -> do
-      let subscriptionLangs = maybeToList lang
-      sendMessage
-        ( sendMessageRequest
-            (ChatId (fromIntegral suid))
-            ( tr subscriptionLangs (MsgScheduleIntro garageName garageAddress)
-                <> "\n\n"
-                <> renderSchedule subscriptionLangs openDaysWithSlots
-            )
+  let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
+  openDays <-
+    runInPool pool $ do
+      updateWhere selector [OpenDayAvailable =. False]
+      selectList selector []
+  openDaysWithSlots <-
+    forM openDays $ \(Entity day OpenDay {..}) -> do
+      slots <- runInPool pool $ selectList [ScheduledSlotDay ==. day] []
+      pure
+        ( openDayDate,
+          [ (scheduledSlotStartTime, scheduledSlotEndTime)
+            | Entity _ ScheduledSlot {..} <- slots
+          ]
         )
-          { sendMessageParseMode = Just MarkdownV2
-          }
+  subscriptions <- runInPool pool getSubscriptions
+  forM_ subscriptions $ \(TelegramUser suid lang _ _) -> do
+    let subscriptionLangs = maybeToList lang
+    void $ sendMessage
+      ( sendMessageRequest
+          (ChatId (fromIntegral suid))
+          ( tr subscriptionLangs (MsgScheduleIntro garageName garageAddress)
+              <> "\n\n"
+              <> renderSchedule subscriptionLangs openDaysWithSlots
+          )
+      )
+        { sendMessageParseMode = Just MarkdownV2
+        }
+    liftIO $ threadDelay 500000
 
-unlockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> ClientM ()
-unlockSchedule langs pool ChatChannel {..} day' = do
+unlockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()
+unlockSchedule langs pool ChatChannel {..} day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
+  Just Garage {..} <- runInPool pool $ get gid
   void $
     sendMessage
-      (sendMessageRequest channelChatId (tr langs MsgUnlocked))
+      (sendMessageRequest channelChatId (tr langs (MsgUnlocked garageName)))
         { sendMessageParseMode = Just MarkdownV2
         }
-  garages <- runInPool pool (selectList [] [])
   let nextWeek = take 7 [day ..]
-  forM_ garages $ \(Entity gid Garage {..}) -> do
-    let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
-    days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
-    sendOpenDaySchedule pool (head nextWeek) gid days
+  let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
+  days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
+  sendOpenDaySchedule pool day gid days
 
 knownLangs :: [Text]
 knownLangs = ["en", "ru"]
@@ -992,8 +991,8 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                   void $
                     sendMessage
                       (sendMessageRequest channelChatId "Welcome, admin!")
-                Just "/setopendays" -> makeSchedule langs pool chat Nothing
-                Just "/lock" -> lockSchedule langs pool chat Nothing
+                Just "/setopendays" -> runInPool pool (selectList [] []) >>= mapM_ (makeSchedule langs pool chat Nothing . entityKey)
+                Just "/lock" -> runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs pool chat Nothing . entityKey)
                 Just txt | "/cancel_" `isPrefixOf` txt -> cancelSlot pool $ readSqlKey $ T.replace "/cancel_" "" txt
                 _ -> void $ reply m langs MsgNotRecognized
             SomeNewCallbackQuery
@@ -1018,9 +1017,9 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                     | "cancel_" `isPrefixOf` txt -> do
                         void $ deleteMessage channelChatId messageMessageId
                         cancelSlot pool $ readSqlKey $ T.replace "cancel_" "" txt
-                    | "setopendays_" `isPrefixOf` txt -> makeSchedule langs pool chat $ parseGregorian (T.replace "setopendays_" "" txt)
-                    | "lock_" `isPrefixOf` txt -> lockSchedule langs pool chat $ parseGregorian (T.replace "lock_" "" txt)
-                    | "unlock_" `isPrefixOf` txt -> unlockSchedule langs pool chat $ parseGregorian (T.replace "unlock_" "" txt)
+                    | "setopendays_" `isPrefixOf` txt -> let [_, g, d] = T.splitOn "_" txt in makeSchedule langs pool chat (parseGregorian d) (readSqlKey g)
+                    | "lock_" `isPrefixOf` txt -> let [_, g, d] = T.splitOn "_" txt in lockSchedule langs pool chat (parseGregorian d) (readSqlKey g)
+                    | "unlock_" `isPrefixOf` txt -> let [_, g, d] = T.splitOn "_" txt in unlockSchedule langs pool chat (parseGregorian d) (readSqlKey g)
                   _ -> pure ()
             _ -> pure ()
         _ -> do
