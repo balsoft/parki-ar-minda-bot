@@ -21,21 +21,22 @@ Signup: Thank you for your interest! You can sign up for multiple duty slots usi
 ChooseGarage: Please choose a garage
 ChooseDay: Please choose a day
 NoDays: Looks like there are no open days scheduled for this garage. Try another garage.
-ChooseExistingSlot: There are some volunteers signed up for that day already. You can join them or propose your own time slot.
+OtherVolunteers: There are some other volunteers signed up for that day already.
+ChooseExistingSlot: You can join them or propose your own time slot.
 OtherDutiesThisDay: Note that you already have some other duties this day:
 NewAppointment: I'd like to propose my own time slot
 ChooseStartTime: Please choose the start of your available time slot
 ChooseEndTime: Please choose the end of your available time slot
 Cancel: Cancel
 PleaseUseButtons: Please, use the buttons in messages.
-Confirm: Do you want to confirm this slot? If you want to change something, do so using the menu above.
+Create: Do you want to create this slot? If you want to change something, do so using the menu above.
 SlotDescription where@Text when@Text: __Where__: #{where}\n__When__: #{when}
 SlotFullDescription who@Text where@Text when@Text: __Who__: #{who}\n__Where__: #{where}\n__When__: #{when}
 DayUnavailable: Sorry, this day is no longer available for signup, as the schedule is already set. Try another day.
 NoSlots: Seems you have no appointments in the future. Consider signing up for one with /signup
-YesConfirm: Yes, confirm
+YesCreate: Yes, create
 Done: Done
-Confirmed: Your time slot has been *confirmed*.\nPlease, don't forget to come, and if you can't, press the button below.\nYou can sign up for more time slots using the same menu above, or press "Done" if that's it.
+Created: Your time slot has been *created*.\nPlease, don't forget to come, and if you can't, press the button below.\n*We will ask you to confirm the slot the day before.*
 CantCome: I can't come, cancel the appointment
 SureCancel: Are you sure you can't come in? This will *cancel* this appointment:
 YesCancel: Yes, I can't come in, cancel
@@ -46,18 +47,27 @@ YesIWillCome: I will come
 ConfirmReminder: Looks like you still haven't confirmed your time slot for tomorrow. Please do so no later than *two hours* before the start of the slot using the confirm button in the message above.
 ConfirmedShort: Your time slot has been *confirmed*.
 LastReminder: Friendly reminder: you have a slot coming up in *1 hour*.
-OtherDuties: It looks like you have other duties at this time. Please, choose another time or day.
+OtherDuties: It looks like you have other duties at this time. Please, choose another time or day, or cancel them.
+Conflicts: Here are the conflicting duties:
+ChangeGarage: Change the garage
+ChangeDay: Change the day
+ChangeStartTime: Change the start time
+AnotherSlot: Do you want to sign up for another slot?
+AnotherGarage: Sign up for another garage
+SameGarage: Sign up for the same garage
+CancelCreate: Cancel the other duties and create this one
 
 Locked: The schedules have been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedules.
 Unlock: Unlock
 Unlocked: The schedules have been unlocked. Use /lock to lock them back and generate the final schedule.
 Lock: Generate a new schedule
 GarageOpenDays garage@Text: Which day should the #{garage} garage be open?
+WorkingScheduleFor garage@Text: __Working schedule for #{garage}__:
 NewScheduleFor garage@Text: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
 SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.
 SlotStillNotConfirmed: Volunteer still has not confirmed this time slot:
 SlotCancel: Cancel this slot
-SetOpenDaysReminder: It's time to set the open days for garages for the next week!
+SetOpenDaysReminder start@Text: It's time to set the open days for garages for the next week (starting #{start})!
 SetOpenDays: Set the open days
 VolunteerRequest user@Text: #{user} wants to become a volunteer
 Allow: Allow

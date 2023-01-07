@@ -29,6 +29,8 @@ import Servant.Client (ClientM)
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Shakespeare.I18N (Lang)
+import Data.Time.Calendar (DayOfWeek(Monday))
+import Data.Time (dayOfWeek)
 
 instance MonadFail ClientM where
   fail e = liftIO (print e) >> liftIO (fail e)
@@ -92,6 +94,12 @@ parseHourMinutesM = formatParseM (hourMinuteFormat ExtendedFormat) . unpack
 
 parseGregorian :: MonadFail m => Text -> m Day
 parseGregorian = formatParseM (calendarFormat ExtendedFormat) . unpack
+
+thisWeekStart :: Day -> Day
+thisWeekStart day = head $ dropWhile ((/= Monday) . dayOfWeek) [day, pred day ..]
+
+nextWeekStart :: Day -> Day
+nextWeekStart day = head $ dropWhile ((/= Monday) . dayOfWeek) [day ..]
 
 chunksOf :: Int -> [a] -> [[a]]
 chunksOf n lst =

@@ -20,6 +20,7 @@ import Symbols
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Util
+import Data.Text (pack)
 
 sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationRequests pool now = do
@@ -170,11 +171,11 @@ sendOpenDayReminder pool now = do
           sendMessage
             ( sendMessageRequest
                 (ChatId (fromIntegral auid))
-                (news <> tr langs MsgSetOpenDaysReminder)
+                (news <> tr langs (MsgSetOpenDaysReminder (showDay langs (nextWeekStart today))))
             )
               { sendMessageParseMode = Just MarkdownV2,
                 sendMessageReplyMarkup =
-                  Just $ ik [[ikb (tr langs MsgSetOpenDays) "setopendays"]]
+                  Just $ ik [[ikb (tr langs MsgSetOpenDays) ("setopendays_" <> pack (showGregorian (nextWeekStart today)))]]
               }
 
 reminderBot :: ConnectionPool -> ClientM ()

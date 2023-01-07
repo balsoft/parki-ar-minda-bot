@@ -19,6 +19,15 @@ attention = "⚠ "
 allGood :: Text
 allGood = "✅ "
 
+clock :: Text
+clock = "🕑 "
+
+calendar :: Text
+calendar = "📅 "
+
+house :: Text
+house = "🏠 "
+
 forbidden :: Text
 forbidden = "🚫 "
 
