@@ -59,6 +59,8 @@ data ScheduledSlotState
   = ScheduledSlotCreated
   | ScheduledSlotAwaitingConfirmation Bool
   | ScheduledSlotConfirmed
+  | ScheduledSlotFinished { checklistMsg :: Int }
+  | ScheduledSlotChecklistComplete { visitors :: Int }
   deriving (Show, Read)
 
 instance PersistField ScheduledSlotState where
