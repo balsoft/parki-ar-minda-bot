@@ -28,8 +28,7 @@ NewAppointment: I'd like to propose my own time slot
 ChooseStartTime: Please choose the start of your available time slot
 ChooseEndTime: Please choose the end of your available time slot
 Cancel: Cancel
-PleaseUseButtons: Please, use the buttons in messages.
-Create: Do you want to create this slot? If you want to change something, do so using the menu above.
+Create: Do you want to create this appointment?
 SlotDescription where@Text when@Text: __Where__: #{where}\n__When__: #{when}
 SlotFullDescription who@Text where@Text when@Text: __Who__: #{who}\n__Where__: #{where}\n__When__: #{when}
 DayUnavailable: Sorry, this day is no longer available for signup, as the schedule is already set. Try another day.
@@ -75,6 +74,19 @@ Decline: Decline
 NewVolunteer user@Text: #{user} has been added to the list of volunteers
 Ban: Ban user
 VolunteerRemoved user@Text: #{user} has been removed from the list of volunteers
+
+SlotFinished: Looks like your duty is *coming to an end*. Thank you for your help! Hopefully, it went well.
+
+Checklist: *Please, make sure to complete all the post-duty checklist items*:
+
+CheckBags: Tie bags if appropriate, place them in the right locations;
+TakeTrashOut: Take out non-recycleable waste, make sure the garage is *clean*;
+TurnOffLight: Turn *off* the lights;
+CloseTheDoor: Close and *lock* the door;
+ReturnKey: Return the *key* to the proper location;
+ReportVisitors: Report how many visitors there were, by *replying to this message* with just a number \(like this: `42`\) and nothing else \(*not* like this: `there were 42.`\).
+Number: Number
+Ack: Acknowledged, thanks!
 
 ScheduleIntro garageName@Text garageAddress@Text: Schedule for #{garageName} garage \(#{garageAddress}\):
 ScheduleTime from@Text to@Text:⏰ #{from} - #{to}\n
