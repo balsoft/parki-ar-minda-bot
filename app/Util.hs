@@ -108,7 +108,7 @@ chunksOf n lst =
     (l, l') -> l : chunksOf n l'
 
 renderUser :: TelegramUser -> Text
-renderUser TelegramUser {telegramUserUsername = Just username} = "@" <> username
+renderUser TelegramUser {telegramUserUsername = Just username} = "@" <> T.replace "_" "\\_" username
 renderUser TelegramUser {telegramUserUserId = uid, telegramUserFullName} =
   "["
     <> T.replace "]" "\\]" (T.replace "\\" "\\\\" telegramUserFullName)
