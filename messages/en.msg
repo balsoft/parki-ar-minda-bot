@@ -57,18 +57,18 @@ AnotherGarage: Sign up for another garage
 SameGarage: Sign up for the same garage
 CancelCreate: Cancel the other duties and create this one
 
-Locked garageName@Text: The schedule for #{garageName} has been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedule.
+Locked garage@Html: The schedule for #{garage} has been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedule.
 Unlock: Unlock
-Unlocked garageName@Text: The schedule for #{garageName} has been unlocked. Use /lock to lock it back and generate the final schedule.
+Unlocked garage@Html: The schedule for #{garage} has been unlocked. Use /lock to lock it back and generate the final schedule.
 Lock: Generate a new schedule
-GarageOpenDays garage@Text: Which day should the #{garage} garage be open?
-WorkingScheduleFor garage@Text: Working schedule for #{garage}:
-NewScheduleFor garage@Text: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
+GarageOpenDays garage@Html: Which day should the #{garage} garage be open?
+WorkingScheduleFor garage@Html: Working schedule for #{garage}:
+NewScheduleFor garage@Html: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
 SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.
 SlotStillNotConfirmed: Volunteer still has not confirmed this time slot:
 SlotCancel: Cancel this slot
 SetOpenDaysReminder start@Text: It's time to set the open days for garages for the next week (starting #{start})!
-SetOpenDays garageName@Text: Set the #{garageName} open days
+SetOpenDays garageName@Text: Set the open days for #{garageName}
 VolunteerRequest user@Html: #{user} wants to become a volunteer
 Allow: Allow
 Decline: Decline
@@ -89,7 +89,7 @@ ReportVisitors: Report how many visitors there were, by <b>replying to this mess
 Number: Number
 Ack: Acknowledged, thanks!
 
-ScheduleIntro garageName@Text garageAddress@Text: Schedule for #{garageName} garage (#{garageAddress}):
+ScheduleIntro garage@Html: Schedule for #{garage}:
 
 Monday: Monday
 Tuesday: Tuesday

@@ -219,7 +219,7 @@ sendOpenDayReminder pool now = do
             )
               { sendMessageParseMode = Just HTML,
                 sendMessageReplyMarkup =
-                  Just $ ik [[ikb (tr langs (MsgSetOpenDays garageName)) ("setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))] | (Entity gid Garage {..}) <- garages]
+                  Just $ ik [[ikb (tr langs (MsgSetOpenDays $ renderGarageText garage)) ("setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))] | (Entity gid garage) <- garages]
               }
 
 reminderBot :: ConnectionPool -> ClientM ()

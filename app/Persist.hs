@@ -80,6 +80,7 @@ share
 Garage
     name Text
     address Text
+    link Text
     UniqueGarage name
     deriving Show
 TelegramUser

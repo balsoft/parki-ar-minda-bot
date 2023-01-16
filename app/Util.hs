@@ -35,11 +35,12 @@ import Text.Blaze
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Hamlet
 import Text.Shakespeare.I18N (Lang)
+import Text.Shakespeare.Text (lt)
 
 instance MonadFail ClientM where
   fail e = liftIO (print e) >> liftIO (fail e)
 
-type IHamlet = (BotMessage -> Markup) -> (() -> ()) -> Html
+type IHamlet = (BotMessage -> Html) -> (() -> ()) -> Html
 
 defaultLayout :: [Lang] -> IHamlet -> Html
 defaultLayout langs f = f (preEscapedText <$> tr langs) (const ())
@@ -119,32 +120,37 @@ chunksOf n lst =
     (l, []) -> [l]
     (l, l') -> l : chunksOf n l'
 
-renderUser :: TelegramUser -> Markup
+renderUser :: TelegramUser -> Html
 renderUser TelegramUser {telegramUserUsername = Just username} = [shamlet|@#{username}|]
 renderUser TelegramUser {telegramUserUserId = uid, telegramUserFullName} = [shamlet|<a href="tg://user?id=#{uid}">#{telegramUserFullName}|]
+
+renderGarage :: Garage -> Html
+renderGarage Garage {..} = [shamlet|#{garageName} (<a href="#{garageLink}">#{garageAddress}</a>)|]
+
+renderGarageText :: Garage -> Text
+renderGarageText Garage {..} = toStrict [lt|#{garageName} (#{garageAddress})|]
 
 getSlotDesc ::
   (MonadIO m, MonadFail m) =>
   [Lang] ->
   ScheduledSlot ->
-  ReaderT SqlBackend m Markup
+  ReaderT SqlBackend m Html
 getSlotDesc langs ScheduledSlot {..} = do
   Just OpenDay {..} <- get scheduledSlotDay
   Just Garage {..} <- get openDayGarage
-  let when = showDay langs openDayDate <> ", " <> showHourMinutes scheduledSlotStartTime <> "—" <> showHourMinutes scheduledSlotEndTime
   pure $
     defaultLayout
       langs
       [ihamlet|
     #{house}<u>_{MsgWhere}:</u> #{garageAddress}
-    #{clock}<u>_{MsgWhen}:</u> #{when}
+    #{clock}<u>_{MsgWhen}:</u> #{showDay langs openDayDate}, #{showHourMinutes scheduledSlotStartTime}—#{showHourMinutes scheduledSlotEndTime}
   |]
 
 getSlotFullDesc ::
   (MonadIO m, MonadFail m) =>
   [Lang] ->
   ScheduledSlot ->
-  ReaderT SqlBackend m Markup
+  ReaderT SqlBackend m Html
 getSlotFullDesc langs slot@ScheduledSlot {..} = do
   Just Volunteer {..} <- get scheduledSlotUser
   Just user <- get volunteerUser

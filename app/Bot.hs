@@ -154,7 +154,7 @@ dayStep langs pool chat@ChatChannel {..} msgId volunteer garage = do
   let anotherGarage = [[ikb (house <> tr langs MsgChangeGarage) "signup"]]
   if null days
     then do
-      menuStep chat msgId (forbidden <> tr langs MsgNoDays) (anotherGarage <> [[cancelButton langs]])
+      menuStep chat msgId (defaultRender langs $ [ihamlet|#{forbidden}_{MsgNoDays}|]) (anotherGarage <> [[cancelButton langs]])
     else do
       let grid =
             [ [ ikb
@@ -240,7 +240,7 @@ existingSlotsStep langs pool chat@ChatChannel {..} msgId volunteer day = do
   let anotherDay = [[ikb (tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)]]
   if not openDayAvailable
     then do
-      menuStep chat msgId (forbidden <> tr langs MsgDayUnavailable) (anotherDay <> [[cancelButton langs]])
+      menuStep chat msgId (defaultRender langs [ihamlet|#{forbidden}_{MsgDayUnavailable}|]) (anotherDay <> [[cancelButton langs]])
     else do
       slots <- runInPool pool $ othersSlots day volunteer
       if null slots
@@ -330,7 +330,16 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
           <&> filter (\(Entity _ ScheduledSlot {..}) -> timesIntersect (scheduledSlotStartTime, scheduledSlotEndTime) (startTime, endTime))
       mapM (getSlotDesc langs . entityVal) (concat conflicts)
   others <- runInPool pool $ othersSlots day volunteer
-  let othersMessage = if null others then "" else "\n\n" <> people <> " " <> tr langs MsgOtherVolunteers <> "\n\n" <> intercalate "\n" [v <> "\\: " <> showHourMinutes scheduledSlotStartTime <> "—" <> showHourMinutes scheduledSlotEndTime | (Entity _ ScheduledSlot {..}, v) <- others]
+  let othersMessage = [ihamlet|
+    $if not (null others)
+      \
+      \
+      #{people} _{MsgOtherVolunteers}
+      \
+      $forall (Entity _ ScheduledSlot {scheduledSlotStartTime, scheduledSlotEndTime}, v) <- others
+        #{v}: #{showHourMinutes scheduledSlotStartTime}—#{showHourMinutes scheduledSlotEndTime}
+    $else
+  |]
   Just OpenDay {openDayGarage} <- runInPool pool $ get day
   mySlots <- mySlotsMsg langs pool day volunteer
   let extraButtons = [[ikb (clock <> tr langs MsgChangeStartTime) ("day_" <> showSqlKey day)], [ikb (calendar <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [ikb (house <> tr langs MsgChangeGarage) "signup"], [cancelButton langs]]
@@ -366,7 +375,7 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
             \
             \
             #{duty}
-          #{othersMessage}
+          ^{othersMessage}
         |]
         )
         ([[ikb (attention <> tr langs MsgCancelCreate) ("create_cancel_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
@@ -380,7 +389,7 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
                 langs
                 [ihamlet|
           _{MsgCreate}
-          #{slotDesc}#{mySlots}#{othersMessage}
+          #{slotDesc}#{mySlots}^{othersMessage}
         |]
         )
         ([[ikb (allGood <> tr langs MsgYesCreate) ("create_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
@@ -785,12 +794,12 @@ getSubscriptions = do
           ++ fmap (subscriptionUser . entityVal) subscriptions
   catMaybes <$> mapM get ids
 
-showSchedule :: [Lang] -> Text -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
-showSchedule langs garageName days =
+showSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
+showSchedule langs garage days =
   defaultRender
     langs
     [ihamlet|
-    #{calendar}<u>_{MsgWorkingScheduleFor garageName}</u>
+    #{calendar}<u>_{MsgWorkingScheduleFor $ renderGarage garage}</u>
 
     $forall (day, slots) <- days
       <b>#{showDay langs day}
@@ -802,7 +811,7 @@ updateWorkingSchedule :: ConnectionPool -> Bool -> Day -> GarageId -> ClientM ()
 updateWorkingSchedule pool recreate weekStart garage = do
   admins <- runInPool pool (selectList [] [] >>= mapM (get . adminUser . entityVal))
   let s = "working_schedule_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart)
-  Just Garage {..} <- runInPool pool $ get garage
+  Just g@Garage {..} <- runInPool pool $ get garage
   let selector = [OpenDayGarage ==. garage, OpenDayDate <-. take 7 [weekStart ..]]
   openDaysWithSlots <-
     runInPool pool $
@@ -818,7 +827,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
           )
   forM_ admins $ \(Just (TelegramUser auid lang _ _)) -> do
     let langs = maybeToList lang
-    let t = showSchedule langs garageName openDaysWithSlots
+    let t = showSchedule langs g openDaysWithSlots
     messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. s, CallbackQueryMultiChatChatId ==. auid] []
     flip catchError (liftIO . print) $ case (recreate, messages) of
       (False, [Entity _ CallbackQueryMultiChat {..}]) -> do
@@ -840,7 +849,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
 sendOpenDaySchedule :: ConnectionPool -> Day -> GarageId -> [Entity OpenDay] -> ClientM ()
 sendOpenDaySchedule pool weekStart garage days = do
   subs <- runInPool pool (selectList [] [] >>= mapM (get . subscriptionUser . entityVal))
-  Just Garage {..} <- runInPool pool $ get garage
+  Just g@Garage {..} <- runInPool pool $ get garage
   updateWorkingSchedule pool True weekStart garage `catchError` (liftIO . print)
   forM_ subs $ \(Just (TelegramUser uid lang _ _)) -> do
     let langs = maybeToList lang
@@ -851,7 +860,7 @@ sendOpenDaySchedule pool weekStart garage days = do
               ( sendMessageRequest
                   (ChatId (fromIntegral uid))
                   ( news
-                      <> tr langs (MsgNewScheduleFor garageName)
+                      <> tr langs (MsgNewScheduleFor $ renderGarage g)
                   )
               )
                 { sendMessageParseMode = Just HTML,
@@ -874,7 +883,7 @@ makeSchedule langs pool chat day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
-  Just Garage {..} <- runInPool pool $ get gid
+  Just g@Garage {..} <- runInPool pool $ get gid
   let nextWeek = take 7 [day ..]
   defaultDays <-
     fmap (defaultOpenDayDayOfWeek . entityVal)
@@ -885,7 +894,7 @@ makeSchedule langs pool chat day' gid = do
   inlinePoll
     chat
     (const True)
-    (tr langs (MsgGarageOpenDays garageName))
+    (tr langs (MsgGarageOpenDays $ renderGarage g))
     [[(showDay langs d, pack $ showGregorian d)] | d <- nextWeek]
     defaultDays'
     >>= ( \case
@@ -934,11 +943,11 @@ lockSchedule langs pool ChatChannel {..} day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
-  Just Garage {..} <- runInPool pool $ get gid
+  Just g@Garage {..} <- runInPool pool $ get gid
   deleteCallbackQueryMessages pool ("schedule_" <> showSqlKey gid <> "_" <> pack (showGregorian day))
   void $
     sendMessage
-      (sendMessageRequest channelChatId (tr langs (MsgLocked garageName)))
+      (sendMessageRequest channelChatId (tr langs (MsgLocked $ renderGarage g)))
         { sendMessageParseMode = Just HTML,
           sendMessageReplyMarkup =
             Just $ ik [[ikb (tr langs MsgUnlock) ("unlock_" <> showSqlKey gid <> "_" <> pack (showGregorian day))]]
@@ -965,7 +974,7 @@ lockSchedule langs pool ChatChannel {..} day' gid = do
       sendMessage
         ( sendMessageRequest
             (ChatId (fromIntegral suid))
-            ( tr subscriptionLangs (MsgScheduleIntro garageName garageAddress)
+            ( tr subscriptionLangs (MsgScheduleIntro $ renderGarage g)
                 <> "\n\n"
                 <> renderSchedule subscriptionLangs openDaysWithSlots
             )
@@ -979,10 +988,10 @@ unlockSchedule langs pool ChatChannel {..} day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
-  Just Garage {..} <- runInPool pool $ get gid
+  Just g@Garage {..} <- runInPool pool $ get gid
   void $
     sendMessage
-      (sendMessageRequest channelChatId (tr langs (MsgUnlocked garageName)))
+      (sendMessageRequest channelChatId (tr langs (MsgUnlocked $ renderGarage g)))
         { sendMessageParseMode = Just HTML
         }
   let nextWeek = take 7 [day ..]
