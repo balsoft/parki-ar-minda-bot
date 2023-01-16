@@ -310,20 +310,6 @@ timesIntersect (sa, ea) (sb, eb) =
     || sb <= sa && sa <= eb
     || sb <= ea && ea <= eb
 
-slotsIntersect :: ScheduledSlot -> ScheduledSlot -> Bool
-slotsIntersect
-  ScheduledSlot
-    { scheduledSlotDay = da,
-      scheduledSlotStartTime = sa,
-      scheduledSlotEndTime = ea
-    }
-  ScheduledSlot
-    { scheduledSlotDay = db,
-      scheduledSlotStartTime = sb,
-      scheduledSlotEndTime = eb
-    } =
-    da == db && timesIntersect (sa, ea) (sb, eb)
-
 askCreateStep ::
   [Lang] ->
   ConnectionPool ->
@@ -339,8 +325,8 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
     runInPool pool $ do
       Just OpenDay {openDayDate} <- get day
       days <- selectList [OpenDayDate ==. openDayDate] []
-      conflicts <- forM days $ \(Entity day _) ->
-        selectList [ScheduledSlotDay ==. day, ScheduledSlotUser ==. volunteer] []
+      conflicts <- forM days $ \(Entity openDay _) ->
+        selectList [ScheduledSlotDay ==. openDay, ScheduledSlotUser ==. volunteer] []
           <&> filter (\(Entity _ ScheduledSlot {..}) -> timesIntersect (scheduledSlotStartTime, scheduledSlotEndTime) (startTime, endTime))
       mapM (getSlotDesc langs . entityVal) (concat conflicts)
   others <- runInPool pool $ othersSlots day volunteer
@@ -905,19 +891,19 @@ makeSchedule langs pool chat day' gid = do
     >>= ( \case
             Nothing -> pure ()
             Just days -> do
-              days <- runInPool pool $ do
+              updatedDays <- runInPool pool $ do
                 deleteWhere [DefaultOpenDayGarage ==. gid]
                 mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
                 deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
                 mapM
-                  ( \day ->
+                  ( \updatedDay ->
                       upsertBy
-                        (UniqueDay day gid)
-                        (OpenDay gid day True)
+                        (UniqueDay updatedDay gid)
+                        (OpenDay gid updatedDay True)
                         [OpenDayAvailable =. True]
                   )
                   days
-              sendOpenDaySchedule pool day gid days
+              sendOpenDaySchedule pool day gid updatedDays
         )
       . fmap (L.sort . mapMaybe parseGregorian)
 
@@ -964,8 +950,8 @@ lockSchedule langs pool ChatChannel {..} day' gid = do
       updateWhere selector [OpenDayAvailable =. False]
       selectList selector []
   openDaysWithSlots <-
-    forM openDays $ \(Entity day OpenDay {..}) -> do
-      slots <- runInPool pool $ selectList [ScheduledSlotDay ==. day] []
+    forM openDays $ \(Entity openDay OpenDay {..}) -> do
+      slots <- runInPool pool $ selectList [ScheduledSlotDay ==. openDay] []
       pure
         ( openDayDate,
           [ (scheduledSlotStartTime, scheduledSlotEndTime)

@@ -13,7 +13,7 @@ import Control.Monad.Reader (ReaderT)
 import Data.Functor ((<&>))
 import Data.Maybe (catMaybes)
 import Data.Text (Text, pack, unpack)
-import qualified Data.Text as T
+import Data.Text.Lazy (toStrict)
 import Data.Time (Day, TimeOfDay, dayOfWeek)
 import Data.Time.Calendar (DayOfWeek (Monday))
 import Data.Time.Format.ISO8601
@@ -28,29 +28,31 @@ import Database.Persist.Sqlite (SqlBackend)
 import I18N
 import Persist
 import Servant.Client (ClientM)
+import Symbols (clock, house, person)
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Blaze
-import Text.Hamlet
-import Text.Shakespeare
-import Text.Shakespeare.I18N (Lang)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
-import Data.Text.Lazy (toStrict)
-import Symbols (person, clock, house)
+import Text.Hamlet
+import Text.Shakespeare.I18N (Lang)
 
 instance MonadFail ClientM where
   fail e = liftIO (print e) >> liftIO (fail e)
 
+type IHamlet = (BotMessage -> Markup) -> (() -> ()) -> Html
+
+defaultLayout :: [Lang] -> IHamlet -> Html
 defaultLayout langs f = f (preEscapedText <$> tr langs) (const ())
 
+defaultRender :: [Lang] -> IHamlet -> Text
 defaultRender langs = toStrict . renderHtml . defaultLayout langs
 
 ik :: [[InlineKeyboardButton]] -> SomeReplyMarkup
 ik = SomeInlineKeyboardMarkup . InlineKeyboardMarkup
 
 ikb :: Text -> Text -> InlineKeyboardButton
-ikb text d =
-  (labeledInlineKeyboardButton text) {inlineKeyboardButtonCallbackData = Just d}
+ikb t d =
+  (labeledInlineKeyboardButton t) {inlineKeyboardButtonCallbackData = Just d}
 
 getNewMessage :: ChatChannel -> ClientM (Either SomeUpdate Message)
 getNewMessage ChatChannel {..} =
