@@ -330,13 +330,14 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
           <&> filter (\(Entity _ ScheduledSlot {..}) -> timesIntersect (scheduledSlotStartTime, scheduledSlotEndTime) (startTime, endTime))
       mapM (getSlotDesc langs . entityVal) (concat conflicts)
   others <- runInPool pool $ othersSlots day volunteer
-  let othersMessage = [ihamlet|
+  let othersMessage =
+        [ihamlet|
     $if not (null others)
       \
       \
       #{people} _{MsgOtherVolunteers}
-      \
       $forall (Entity _ ScheduledSlot {scheduledSlotStartTime, scheduledSlotEndTime}, v) <- others
+        \
         #{v}: #{showHourMinutes scheduledSlotStartTime}—#{showHourMinutes scheduledSlotEndTime}
     $else
   |]
@@ -794,16 +795,18 @@ getSubscriptions = do
           ++ fmap (subscriptionUser . entityVal) subscriptions
   catMaybes <$> mapM get ids
 
-showSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
-showSchedule langs garage days =
+showWorkingSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
+showWorkingSchedule langs garage days =
   defaultRender
     langs
     [ihamlet|
-    #{calendar}<u>_{MsgWorkingScheduleFor $ renderGarage garage}</u>
-
+    #{calendar}<b>_{MsgWorkingScheduleFor $ renderGarage garage}</b>
     $forall (day, slots) <- days
+      \
+      \
       <b>#{showDay langs day}
       $forall (user, start, end) <- slots
+        \
         #{clock}#{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}
   |]
 
@@ -827,7 +830,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
           )
   forM_ admins $ \(Just (TelegramUser auid lang _ _)) -> do
     let langs = maybeToList lang
-    let t = showSchedule langs g openDaysWithSlots
+    let t = showWorkingSchedule langs g openDaysWithSlots
     messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. s, CallbackQueryMultiChatChatId ==. auid] []
     flip catchError (liftIO . print) $ case (recreate, messages) of
       (False, [Entity _ CallbackQueryMultiChat {..}]) -> do
@@ -1013,7 +1016,11 @@ volunteerCommands =
 
 adminCommands :: [(Text, BotMessage)]
 adminCommands =
-  [("setopendays", MsgCommandSetOpenDays), ("lock", MsgCommandLock)]
+  [ ("setopendays", MsgCommandSetOpenDays),
+    ("lock", MsgCommandLock),
+    ("workingschedule", MsgCommandWorkingSchedule),
+    ("workingschedulethisweek", MsgCommandWorkingScheduleThisWeek)
+  ]
 
 setCommands :: [(Text, BotMessage)] -> ChatChannel -> ClientM ()
 setCommands commands ChatChannel {..} =
@@ -1074,6 +1081,12 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                       (sendMessageRequest channelChatId "Welcome, admin!")
                 Just "/setopendays" -> runInPool pool (selectList [] []) >>= mapM_ (makeSchedule langs pool chat Nothing . entityKey)
                 Just "/lock" -> runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs pool chat Nothing . entityKey)
+                Just "/workingschedule" -> do
+                  today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
+                  runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (nextWeekStart today) . entityKey)
+                Just "/workingschedulethisweek" -> do
+                  today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
+                  runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (thisWeekStart today) . entityKey)
                 Just txt | "/cancel_" `isPrefixOf` txt -> cancelSlot pool $ readSqlKey $ T.replace "/cancel_" "" txt
                 _ -> void $ reply m langs MsgNotRecognized
             SomeNewCallbackQuery

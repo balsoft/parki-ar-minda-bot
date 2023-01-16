@@ -6,6 +6,8 @@ CommandDelete: Delete all information about me
 
 CommandSetOpenDays: Select days for which the volunteers are able to sign up
 CommandLock: Lock the schedule and display the publishable version
+CommandWorkingSchedule: Show working schedule for next week
+CommandWorkingScheduleThisWeek: Show working schedule for this week
 
 Greet: Hello! This is a bot for eco-volunteers to sign up for duty in one of <b>parki ar minda</b> garages in Tbilisi.\nIf you want to learn more about us and what we do, check out @parkiarminda.\nYour application to become a volunteer is currently being evaluated by administrators. We will notify you when it is granted.
 Volunteer: Congratulations, you are now a volunteer. You can now /subscribe to notifications about scheduling starts and /signup for duty.

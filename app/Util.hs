@@ -112,7 +112,7 @@ thisWeekStart :: Day -> Day
 thisWeekStart day = head $ dropWhile ((/= Monday) . dayOfWeek) [day, pred day ..]
 
 nextWeekStart :: Day -> Day
-nextWeekStart day = head $ dropWhile ((/= Monday) . dayOfWeek) [day ..]
+nextWeekStart day = head $ dropWhile ((/= Monday) . dayOfWeek) [succ day ..]
 
 chunksOf :: Int -> [a] -> [[a]]
 chunksOf n lst =
