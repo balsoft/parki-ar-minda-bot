@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -13,7 +14,8 @@ import Data.Functor ((<&>))
 import Data.Maybe (catMaybes)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
-import Data.Time (Day, TimeOfDay)
+import Data.Time (Day, TimeOfDay, dayOfWeek)
+import Data.Time.Calendar (DayOfWeek (Monday))
 import Data.Time.Format.ISO8601
   ( FormatExtension (ExtendedFormat),
     calendarFormat,
@@ -28,12 +30,20 @@ import Persist
 import Servant.Client (ClientM)
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
+import Text.Blaze
+import Text.Hamlet
+import Text.Shakespeare
 import Text.Shakespeare.I18N (Lang)
-import Data.Time.Calendar (DayOfWeek(Monday))
-import Data.Time (dayOfWeek)
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Data.Text.Lazy (toStrict)
+import Symbols (person, clock, house)
 
 instance MonadFail ClientM where
   fail e = liftIO (print e) >> liftIO (fail e)
+
+defaultLayout langs f = f (preEscapedText <$> tr langs) (const ())
+
+defaultRender langs = toStrict . renderHtml . defaultLayout langs
 
 ik :: [[InlineKeyboardButton]] -> SomeReplyMarkup
 ik = SomeInlineKeyboardMarkup . InlineKeyboardMarkup
@@ -52,14 +62,14 @@ send :: ChatId -> [Lang] -> BotMessage -> ClientM (Response Message)
 send cid langs msg =
   sendMessage
     (sendMessageRequest cid (tr langs msg))
-      { sendMessageParseMode = Just MarkdownV2
+      { sendMessageParseMode = Just HTML
       }
 
 reply :: Message -> [Lang] -> BotMessage -> ClientM (Response Message)
 reply (Message {messageChat = Chat {chatId}, messageMessageId}) langs rpl =
   sendMessage
     (sendMessageRequest chatId (tr langs rpl))
-      { sendMessageParseMode = Just MarkdownV2,
+      { sendMessageParseMode = Just HTML,
         sendMessageReplyToMessageId = Just messageMessageId
       }
 
@@ -107,59 +117,43 @@ chunksOf n lst =
     (l, []) -> [l]
     (l, l') -> l : chunksOf n l'
 
-renderUser :: TelegramUser -> Text
-renderUser TelegramUser {telegramUserUsername = Just username} = "@" <> T.replace "_" "\\_" username
-renderUser TelegramUser {telegramUserUserId = uid, telegramUserFullName} =
-  "["
-    <> T.replace "]" "\\]" (T.replace "\\" "\\\\" telegramUserFullName)
-    <> "](tg://user?id="
-    <> pack (show uid)
-    <> ")"
+renderUser :: TelegramUser -> Markup
+renderUser TelegramUser {telegramUserUsername = Just username} = [shamlet|@#{username}|]
+renderUser TelegramUser {telegramUserUserId = uid, telegramUserFullName} = [shamlet|<a href="tg://user?id=#{uid}">#{telegramUserFullName}|]
 
 getSlotDesc ::
   (MonadIO m, MonadFail m) =>
   [Lang] ->
   ScheduledSlot ->
-  ReaderT SqlBackend m Text
+  ReaderT SqlBackend m Markup
 getSlotDesc langs ScheduledSlot {..} = do
   Just OpenDay {..} <- get scheduledSlotDay
   Just Garage {..} <- get openDayGarage
+  let when = showDay langs openDayDate <> ", " <> showHourMinutes scheduledSlotStartTime <> "—" <> showHourMinutes scheduledSlotEndTime
   pure $
-    tr
+    defaultLayout
       langs
-      ( MsgSlotDescription
-          garageAddress
-          ( showDay langs openDayDate
-              <> ", "
-              <> showHourMinutes scheduledSlotStartTime
-              <> "—"
-              <> showHourMinutes scheduledSlotEndTime
-          )
-      )
+      [ihamlet|
+    #{house}<u>_{MsgWhere}:</u> #{garageAddress}
+    #{clock}<u>_{MsgWhen}:</u> #{when}
+  |]
 
 getSlotFullDesc ::
   (MonadIO m, MonadFail m) =>
   [Lang] ->
   ScheduledSlot ->
-  ReaderT SqlBackend m Text
-getSlotFullDesc langs ScheduledSlot {..} = do
+  ReaderT SqlBackend m Markup
+getSlotFullDesc langs slot@ScheduledSlot {..} = do
   Just Volunteer {..} <- get scheduledSlotUser
   Just user <- get volunteerUser
-  Just OpenDay {..} <- get scheduledSlotDay
-  Just Garage {..} <- get openDayGarage
+  slotDesc <- getSlotDesc langs slot
   pure $
-    tr
+    defaultLayout
       langs
-      ( MsgSlotFullDescription
-          (renderUser user)
-          garageAddress
-          ( showDay langs openDayDate
-              <> ", "
-              <> showHourMinutes scheduledSlotStartTime
-              <> "—"
-              <> showHourMinutes scheduledSlotEndTime
-          )
-      )
+      [ihamlet|
+    #{person} <u>_{MsgWho}:</u> #{renderUser user}
+    #{slotDesc}
+  |]
 
 getAdmins :: ReaderT SqlBackend IO [TelegramUser]
 getAdmins = do

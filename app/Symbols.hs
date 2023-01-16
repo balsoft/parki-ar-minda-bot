@@ -43,5 +43,8 @@ info = "ⓘ "
 people :: Text
 people = "👥"
 
+person :: Text
+person = "👤"
+
 diamond :: Text
 diamond = "🔶"

@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -Wno-unused-record-wildcards #-}
@@ -20,6 +21,7 @@ import qualified Data.List as L
 import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe, maybeToList)
 import Data.Text as T (Text, intercalate, isPrefixOf, pack, replace, splitOn, unpack)
 import Data.Text.IO (hPutStrLn)
+import Data.Text.Lazy (toStrict)
 import Data.Time
 import Database.Persist
 import Database.Persist.Sqlite (ConnectionPool, SqlBackend)
@@ -31,6 +33,9 @@ import Symbols
 import System.IO (hPrint, stderr)
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
+import Text.Blaze.Html (Html)
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Text.Hamlet (ihamlet)
 import Text.Shakespeare.I18N (Lang)
 import Util
 
@@ -88,12 +93,12 @@ menuStep ChatChannel {..} Nothing msg grid =
     <$> sendMessage
       (sendMessageRequest channelChatId msg)
         { sendMessageReplyMarkup = Just $ ik grid,
-          sendMessageParseMode = Just MarkdownV2
+          sendMessageParseMode = Just HTML
         }
 menuStep ChatChannel {..} (Just msgId) msg grid =
   catchError
     ( do
-        void (editMessageText (editMessageTextRequest msg) {editMessageTextMessageId = Just msgId, editMessageTextChatId = Just $ SomeChatId channelChatId, editMessageTextParseMode = Just MarkdownV2})
+        void (editMessageText (editMessageTextRequest msg) {editMessageTextMessageId = Just msgId, editMessageTextChatId = Just $ SomeChatId channelChatId, editMessageTextParseMode = Just HTML})
         void (editMessageReplyMarkup (editMessageReplyMarkupRequest (Just $ ik grid)) {editMessageReplyMarkupMessageId = Just msgId, editMessageReplyMarkupChatId = Just $ SomeChatId channelChatId})
     )
     (const $ pure ())
@@ -169,7 +174,7 @@ dayStep langs pool chat@ChatChannel {..} msgId volunteer garage = do
             ]
       menuStep chat msgId (tr langs MsgChooseDay) (grid <> anotherGarage <> [[cancelButton langs]])
 
-getMySlots :: (MonadIO m, MonadFail m) => [Lang] -> Key OpenDay -> VolunteerId -> ReaderT SqlBackend m [Text]
+getMySlots :: (MonadIO m, MonadFail m) => [Lang] -> Key OpenDay -> VolunteerId -> ReaderT SqlBackend m [Html]
 getMySlots langs day volunteer = do
   Just OpenDay {..} <- get day
   mapM (getSlotDesc langs . entityVal) . concat
@@ -188,19 +193,23 @@ mySlotsMsg ::
   ConnectionPool ->
   Key OpenDay ->
   VolunteerId ->
-  m Text
+  m Html
 mySlotsMsg langs pool day volunteer = runInPool pool $ do
   mySlots <- getMySlots langs day volunteer
   pure $
-    if not $ null mySlots
-      then
-        "\n\n"
-          <> diamond
-          <> " "
-          <> tr langs MsgOtherDutiesThisDay
-          <> "\n\n"
-          <> intercalate "\n\n" mySlots
-      else ""
+    defaultLayout
+      langs
+      [ihamlet|
+    $if not (null mySlots)
+      \
+      \
+      #{diamond} _{MsgOtherDutiesThisDay}
+      $forall slot <- mySlots
+        \
+        \
+        #{slot}
+    $else
+  |]
 
 othersSlots ::
   (MonadIO m, MonadFail m) =>
@@ -259,7 +268,7 @@ existingSlotsStep langs pool chat@ChatChannel {..} msgId volunteer day = do
           menuStep
             chat
             msgId
-            (people <> " " <> tr langs MsgOtherVolunteers <> " " <> tr langs MsgChooseExistingSlot <> mySlots)
+            (toStrict $ renderHtml $ defaultLayout langs [ihamlet|#{people} _{MsgOtherVolunteers} _{MsgChooseExistingSlot}#{mySlots}|])
             (grid <> [[ikb (calendar <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [cancelButton langs]])
 
 startTimeStep ::
@@ -276,7 +285,7 @@ startTimeStep langs pool chat@ChatChannel {..} msgId volunteer day = do
   menuStep
     chat
     msgId
-    (clock <> tr langs MsgChooseStartTime <> mySlots)
+    (toStrict $ renderHtml $ defaultLayout langs [ihamlet|#{clock} _{MsgChooseStartTime}#{mySlots}|])
     (timeGrid day Nothing <> [[ikb (calendar <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [cancelButton langs]])
 
 endTimeStep ::
@@ -326,7 +335,14 @@ askCreateStep ::
   TimeOfDay ->
   ClientM MessageId
 askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime endTime = do
-  otherDuties <- runInPool pool $ getMySlots langs day volunteer
+  conflicts <-
+    runInPool pool $ do
+      Just OpenDay {openDayDate} <- get day
+      days <- selectList [OpenDayDate ==. openDayDate] []
+      conflicts <- forM days $ \(Entity day _) ->
+        selectList [ScheduledSlotDay ==. day, ScheduledSlotUser ==. volunteer] []
+          <&> filter (\(Entity _ ScheduledSlot {..}) -> timesIntersect (scheduledSlotStartTime, scheduledSlotEndTime) (startTime, endTime))
+      mapM (getSlotDesc langs . entityVal) (concat conflicts)
   others <- runInPool pool $ othersSlots day volunteer
   let othersMessage = if null others then "" else "\n\n" <> people <> " " <> tr langs MsgOtherVolunteers <> "\n\n" <> intercalate "\n" [v <> "\\: " <> showHourMinutes scheduledSlotStartTime <> "—" <> showHourMinutes scheduledSlotEndTime | (Entity _ ScheduledSlot {..}, v) <- others]
   Just OpenDay {openDayGarage} <- runInPool pool $ get day
@@ -345,25 +361,43 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
               scheduledSlotUser = volunteer
             }
         )
-  if not $ null otherDuties
+  if not $ null conflicts
     then do
       menuStep
         chat
         msgId
-        ( forbidden
-            <> tr langs MsgOtherDuties
-            <> "\n\n"
-            <> slotDesc
-            <> "\n\n"
-            <> diamond
-            <> tr langs MsgConflicts
-            <> "\n\n"
-            <> intercalate "\n\n" otherDuties
-            <> othersMessage
+        ( toStrict $
+            renderHtml $
+              defaultLayout
+                langs
+                [ihamlet|
+          #{forbidden} _{MsgOtherDuties}
+          \
+          #{slotDesc}
+          \
+          #{diamond} _{MsgConflicts}
+          $forall duty <- conflicts
+            \
+            \
+            #{duty}
+          #{othersMessage}
+        |]
         )
         ([[ikb (attention <> tr langs MsgCancelCreate) ("create_cancel_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
     else do
-      menuStep chat msgId (tr langs MsgCreate <> "\n" <> slotDesc <> mySlots <> othersMessage) ([[ikb (allGood <> tr langs MsgYesCreate) ("create_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
+      menuStep
+        chat
+        msgId
+        ( toStrict $
+            renderHtml $
+              defaultLayout
+                langs
+                [ihamlet|
+          _{MsgCreate}
+          #{slotDesc}#{mySlots}#{othersMessage}
+        |]
+        )
+        ([[ikb (allGood <> tr langs MsgYesCreate) ("create_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
 
 cancelSlotButton :: [Lang] -> ScheduledSlotId -> InlineKeyboardButton
 cancelSlotButton langs slotId =
@@ -401,7 +435,13 @@ slotCreated langs pool chat@ChatChannel {..} msgId volunteer day startTime endTi
     menuStep
       chat
       msgId
-      (allGood <> tr langs MsgCreated <> "\n" <> slotDesc)
+      ( defaultRender
+          langs
+          [ihamlet|
+        #{allGood} _{MsgCreated}
+        #{slotDesc}
+        |]
+      )
       [[cancelSlotButton langs slotId]]
   menuStep chat Nothing (tr langs MsgAnotherSlot) [[ikb (tr langs MsgAnotherGarage) "signup"], [ikb (tr langs MsgSameGarage) ("garage_" <> showSqlKey openDayGarage)], [ikb (tr langs MsgDone) "cancel"]]
     <* updateWorkingSchedule pool False (thisWeekStart openDayDate) openDayGarage
@@ -418,8 +458,8 @@ list langs ChatChannel {channelChatId} volunteer pool = do
   forM_ slots $ \(Entity slotId slot) -> do
     slotDesc <- runInPool pool $ getSlotDesc langs slot
     sendMessage
-      (sendMessageRequest channelChatId slotDesc)
-        { sendMessageParseMode = Just MarkdownV2,
+      (sendMessageRequest channelChatId (defaultRender langs [ihamlet|#{slotDesc}|]))
+        { sendMessageParseMode = Just HTML,
           sendMessageReplyMarkup = Just $ ik [[cancelSlotButton langs slotId]]
         }
 
@@ -475,9 +515,15 @@ cancelSlot pool slotId = do
     sendMessage
       ( sendMessageRequest
           (ChatId (fromIntegral telegramUserUserId))
-          (attention <> tr langs MsgYourSlotCancelled <> "\n" <> slotDesc)
+          ( defaultRender
+              langs
+              [ihamlet|
+            #{attention}_{MsgYourSlotCancelled}
+            #{slotDesc}
+          |]
+          )
       )
-        { sendMessageParseMode = Just MarkdownV2
+        { sendMessageParseMode = Just HTML
         }
   updateWorkingSchedule pool False weekStart gid `catchError` (liftIO . print)
   admins <- runInPool pool getAdmins
@@ -489,9 +535,15 @@ cancelSlot pool slotId = do
         sendMessage
           ( sendMessageRequest
               (ChatId (fromIntegral auid))
-              (attention <> tr adminLangs MsgSlotCancelled <> "\n" <> slotFullDesc)
+              ( defaultRender
+                  langs
+                  [ihamlet|
+                #{attention}_{MsgSlotCancelled}
+                #{slotFullDesc}
+              |]
+              )
           )
-            { sendMessageParseMode = Just MarkdownV2,
+            { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup =
                 Just (ik [[ikb (tr adminLangs MsgLock) ("lock_" <> pack (showGregorian weekStart))]])
             }
@@ -511,9 +563,15 @@ askCancelSlot langs pool ChatChannel {..} originalMsgId slotId = do
       <$> sendMessage
         ( sendMessageRequest
             channelChatId
-            (attention <> tr langs MsgSureCancel <> "\n" <> slotDesc)
+            ( defaultRender
+                langs
+                [ihamlet|
+              #{attention}_{MsgSureCancel}
+              #{slotDesc}
+            |]
+            )
         )
-          { sendMessageParseMode = Just MarkdownV2,
+          { sendMessageParseMode = Just HTML,
             sendMessageReplyMarkup =
               Just $
                 ik
@@ -563,9 +621,16 @@ confirmSlot langs pool ChatChannel {..} originalMsgId slotId = do
     sendMessage
       ( sendMessageRequest
           channelChatId
-          (allGood <> tr langs MsgConfirmedShort <> "\n" <> slotDesc)
+          -- (allGood <> tr langs MsgConfirmedShort <> "\n" <> slotDesc)
+          ( defaultRender
+              langs
+              [ihamlet|
+            #{allGood}_{MsgConfirmedShort}
+            #{slotDesc}
+          |]
+          )
       )
-        { sendMessageParseMode = Just MarkdownV2,
+        { sendMessageParseMode = Just HTML,
           sendMessageReplyMarkup = Just $ ik [[cancelSlotButton langs slotId]]
         }
 
@@ -581,9 +646,14 @@ askForPermission pool User {userId = UserId uid} = do
         =<< sendMessage
           ( sendMessageRequest
               (ChatId (fromIntegral auid))
-              (tr langs $ MsgVolunteerRequest $ renderUser user)
+              ( defaultRender
+                  langs
+                  [ihamlet|
+              _{MsgVolunteerRequest $ renderUser user}
+              |]
+              )
           )
-            { sendMessageParseMode = Just MarkdownV2,
+            { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup =
                 Just $
                   ik
@@ -614,7 +684,7 @@ allowVolunteer pool tuid = do
               (ChatId (fromIntegral auid))
               (tr langs $ MsgNewVolunteer $ renderUser user)
           )
-            { sendMessageParseMode = Just MarkdownV2,
+            { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup =
                 Just $
                   ik
@@ -631,7 +701,7 @@ allowVolunteer pool tuid = do
           (ChatId (fromIntegral telegramUserUserId))
           (tr (maybeToList telegramUserLang) MsgVolunteer)
       )
-        { sendMessageParseMode = Just MarkdownV2
+        { sendMessageParseMode = Just HTML
         }
 
 banVolunteer :: ConnectionPool -> TelegramUserId -> ClientM ()
@@ -651,7 +721,7 @@ banVolunteer pool tuid = do
           (ChatId (fromIntegral auid))
           (tr langs $ MsgVolunteerRemoved $ renderUser user)
       )
-        { sendMessageParseMode = Just MarkdownV2
+        { sendMessageParseMode = Just HTML
         }
 
 checkbox :: Bool -> Text
@@ -731,20 +801,16 @@ getSubscriptions = do
 
 showSchedule :: [Lang] -> Text -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
 showSchedule langs garageName days =
-  calendar
-    <> tr langs (MsgWorkingScheduleFor garageName)
-    <> "\n\n"
-    <> intercalate
-      "\n\n"
-      [ "*"
-          <> showDay langs day
-          <> "*\n"
-          <> intercalate
-            "\n"
-            [ clock <> renderUser user <> ": " <> showHourMinutes start <> "-" <> showHourMinutes end | (user, start, end) <- slots
-            ]
-        | (day, slots) <- days
-      ]
+  defaultRender
+    langs
+    [ihamlet|
+    #{calendar}<u>_{MsgWorkingScheduleFor garageName}</u>
+
+    $forall (day, slots) <- days
+      <b>#{showDay langs day}
+      $forall (user, start, end) <- slots
+        #{clock}#{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}
+  |]
 
 updateWorkingSchedule :: ConnectionPool -> Bool -> Day -> GarageId -> ClientM ()
 updateWorkingSchedule pool recreate weekStart garage = do
@@ -766,9 +832,9 @@ updateWorkingSchedule pool recreate weekStart garage = do
           )
   forM_ admins $ \(Just (TelegramUser auid lang _ _)) -> do
     let langs = maybeToList lang
-    let t = escapeMd $ showSchedule langs garageName openDaysWithSlots
+    let t = showSchedule langs garageName openDaysWithSlots
     messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. s, CallbackQueryMultiChatChatId ==. auid] []
-    flip catchError (const $ pure ()) $ case (recreate, messages) of
+    flip catchError (liftIO . print) $ case (recreate, messages) of
       (False, [Entity _ CallbackQueryMultiChat {..}]) -> do
         flip catchError (liftIO . print) $
           void $
@@ -776,10 +842,10 @@ updateWorkingSchedule pool recreate weekStart garage = do
               (editMessageTextRequest t)
                 { editMessageTextMessageId = Just (MessageId $ fromIntegral callbackQueryMultiChatMsgId),
                   editMessageTextChatId = Just $ SomeChatId (ChatId $ fromIntegral auid),
-                  editMessageTextParseMode = Just MarkdownV2
+                  editMessageTextParseMode = Just HTML
                 }
       (_, msgs) -> do
-        MessageId mid <- messageMessageId . responseResult <$> sendMessage (sendMessageRequest (ChatId (fromIntegral auid)) t) {sendMessageParseMode = Just MarkdownV2, sendMessageReplyMarkup = Just $ ik [[ikb (tr langs MsgLock) ("lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]}
+        MessageId mid <- messageMessageId . responseResult <$> sendMessage (sendMessageRequest (ChatId (fromIntegral auid)) t) {sendMessageParseMode = Just HTML, sendMessageReplyMarkup = Just $ ik [[ikb (tr langs MsgLock) ("lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]}
         void $ runInPool pool $ insert $ CallbackQueryMultiChat auid (fromIntegral mid) s
         forM_ msgs $ \(Entity _ CallbackQueryMultiChat {..}) -> do
           flip catchError (liftIO . print) $ void $ deleteMessage (ChatId (fromIntegral auid)) (MessageId $ fromIntegral callbackQueryMultiChatMsgId)
@@ -802,7 +868,7 @@ sendOpenDaySchedule pool weekStart garage days = do
                       <> tr langs (MsgNewScheduleFor garageName)
                   )
               )
-                { sendMessageParseMode = Just MarkdownV2,
+                { sendMessageParseMode = Just HTML,
                   sendMessageReplyMarkup =
                     Just $
                       ik
@@ -868,11 +934,11 @@ renderSchedule :: [Lang] -> [(Day, [(TimeOfDay, TimeOfDay)])] -> Text
 renderSchedule langs s =
   intercalate
     "\n"
-    [ escapeMd (showDay langs day)
+    [ showDay langs day
         <> "\n\n"
         <> intercalate
           "\n"
-          [tr langs (MsgScheduleTime (showHourMinutes start) (showHourMinutes end)) | (start, end) <- mergeIntervals times]
+          [defaultRender langs [ihamlet|#{clock}#{showHourMinutes start}-#{showHourMinutes end}|] | (start, end) <- mergeIntervals times]
       | (day, times) <- L.sort s,
         times /= []
     ]
@@ -887,7 +953,7 @@ lockSchedule langs pool ChatChannel {..} day' gid = do
   void $
     sendMessage
       (sendMessageRequest channelChatId (tr langs (MsgLocked garageName)))
-        { sendMessageParseMode = Just MarkdownV2,
+        { sendMessageParseMode = Just HTML,
           sendMessageReplyMarkup =
             Just $ ik [[ikb (tr langs MsgUnlock) ("unlock_" <> showSqlKey gid <> "_" <> pack (showGregorian day))]]
         }
@@ -918,7 +984,7 @@ lockSchedule langs pool ChatChannel {..} day' gid = do
                 <> renderSchedule subscriptionLangs openDaysWithSlots
             )
         )
-          { sendMessageParseMode = Just MarkdownV2
+          { sendMessageParseMode = Just HTML
           }
     liftIO $ threadDelay 500000
 
@@ -931,7 +997,7 @@ unlockSchedule langs pool ChatChannel {..} day' gid = do
   void $
     sendMessage
       (sendMessageRequest channelChatId (tr langs (MsgUnlocked garageName)))
-        { sendMessageParseMode = Just MarkdownV2
+        { sendMessageParseMode = Just HTML
         }
   let nextWeek = take 7 [day ..]
   let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]

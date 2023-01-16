@@ -77,6 +77,8 @@ executable parki-ar-minda-bot
     , time
     , transformers
     , unliftio-core
+    , blaze-markup
+    , blaze-html
 
   -- , shakespeare-i18n
   -- Directories containing source files.

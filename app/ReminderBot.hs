@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module ReminderBot
@@ -21,6 +22,7 @@ import Servant.Client hiding (Response)
 import Symbols
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
+import Text.Hamlet
 import Util
 
 sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
@@ -44,9 +46,15 @@ sendConfirmationRequests pool now = do
       sendMessage
         ( sendMessageRequest
             (ChatId (fromIntegral telegramUserUserId))
-            (tr langs MsgConfirmTomorrow <> "\n" <> slotDesc)
+            ( defaultRender
+                langs
+                [ihamlet|
+                      _{MsgConfirmTomorrow}
+                      #{slotDesc}
+                    |]
+            )
         )
-          { sendMessageParseMode = Just MarkdownV2,
+          { sendMessageParseMode = Just HTML,
             sendMessageReplyMarkup =
               Just $
                 ik
@@ -82,7 +90,7 @@ sendConfirmationReminders pool now = do
             (ChatId (fromIntegral telegramUserUserId))
             (attention <> tr langs MsgConfirmReminder)
         )
-          { sendMessageParseMode = Just MarkdownV2
+          { sendMessageParseMode = Just HTML
           }
 
 notifyUnconfirmedSlots :: ConnectionPool -> LocalTime -> ClientM ()
@@ -109,9 +117,15 @@ notifyUnconfirmedSlots pool now = do
         sendMessage
           ( sendMessageRequest
               (ChatId (fromIntegral auid))
-              (tr langs MsgSlotStillNotConfirmed <> "\n" <> slotFullDesc)
+              ( defaultRender
+                  langs
+                  [ihamlet|
+                _{MsgSlotStillNotConfirmed}
+                #{slotFullDesc}
+              |]
+              )
           )
-            { sendMessageParseMode = Just MarkdownV2,
+            { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup =
                 Just $
                   ik
@@ -149,7 +163,7 @@ sendLastReminders pool now = do
             (ChatId (fromIntegral telegramUserUserId))
             (tr langs MsgLastReminder)
         )
-          { sendMessageParseMode = Just MarkdownV2
+          { sendMessageParseMode = Just HTML
           }
 
 sendChecklist :: ConnectionPool -> LocalTime -> ClientM ()
@@ -179,7 +193,7 @@ sendChecklist pool now = do
               (ChatId (fromIntegral telegramUserUserId))
               (tr langs MsgSlotFinished <> "\n\n" <> tr langs MsgChecklist <> "\n\n" <> T.intercalate "\n" (fmap (const "• " <> tr langs) [MsgCheckBags, MsgTakeTrashOut, MsgCloseTheDoor, MsgReturnKey, MsgReportVisitors]))
           )
-            { sendMessageParseMode = Just MarkdownV2,
+            { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup = Just $ SomeForceReply $ ForceReply True (Just $ tr langs MsgNumber) Nothing
             }
     runInPool pool $
@@ -203,7 +217,7 @@ sendOpenDayReminder pool now = do
                 (ChatId (fromIntegral auid))
                 (news <> tr langs (MsgSetOpenDaysReminder (showDay langs (nextWeekStart today))))
             )
-              { sendMessageParseMode = Just MarkdownV2,
+              { sendMessageParseMode = Just HTML,
                 sendMessageReplyMarkup =
                   Just $ ik [[ikb (tr langs (MsgSetOpenDays garageName)) ("setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))] | (Entity gid Garage {..}) <- garages]
               }

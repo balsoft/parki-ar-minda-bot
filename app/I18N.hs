@@ -2,34 +2,36 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module I18N
   ( BotMessage (..),
     tr,
     renderMessage,
-    escapeMd,
     showDay,
   )
 where
 
 import Data.Text (Text, pack, replace)
 import Data.Time
-import Text.Shakespeare.I18N (Lang, RenderMessage (renderMessage), mkMessage)
+import Text.Shakespeare.I18N (Lang, RenderMessage (renderMessage), mkMessage, ToMessage (toMessage))
+import Text.Blaze.Html (Html)
+import Text.Blaze.Internal (MarkupM)
+import Data.Text.Lazy (toStrict)
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Control.Monad (void)
+
 
 data Bot
   = Bot
 
+instance ToMessage (MarkupM a) where
+  toMessage h = toStrict $ renderHtml (void h)
+
 mkMessage "Bot" "messages" "en"
 
 tr :: [Lang] -> BotMessage -> Text
-tr langs = replace "\\n" "\n" . escapeMd . renderMessage Bot langs
-
-escapeMd :: Text -> Text
-escapeMd txt =
-  foldl
-    (\s e -> replace e ("\\" <> e) s)
-    txt
-    ["~", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"]
+tr langs = replace "\\n" "\n" . renderMessage Bot langs
 
 data Month
   = January
