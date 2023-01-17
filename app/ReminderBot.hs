@@ -175,8 +175,7 @@ sendChecklist pool now = do
         >>= \entities -> do
           selectList
             [ ScheduledSlotDay <-. fmap entityKey entities,
-              ScheduledSlotStartTime
-                <=. localTimeOfDay (addLocalTime (60 * 60) now),
+              ScheduledSlotEndTime >=. localTimeOfDay now,
               ScheduledSlotState ==. ScheduledSlotConfirmed
             ]
             []
