@@ -907,7 +907,7 @@ makeSchedule langs pool chat day' gid = do
               updatedDays <- runInPool pool $ do
                 deleteWhere [DefaultOpenDayGarage ==. gid]
                 mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
-                deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
+                deleteWhere [OpenDayGarage ==. gid, OpenDayDate <-. (nextWeek L.\\ days)]
                 mapM
                   ( \updatedDay ->
                       upsertBy
