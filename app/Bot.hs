@@ -796,8 +796,8 @@ getSubscriptions = do
           ++ fmap (subscriptionUser . entityVal) subscriptions
   catMaybes <$> mapM get ids
 
-showWorkingSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
-showWorkingSchedule langs garage days =
+renderWorkingSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
+renderWorkingSchedule langs garage days =
   defaultRender
     langs
     [ihamlet|
@@ -831,7 +831,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
           )
   forM_ admins $ \(Just (TelegramUser auid lang _ _)) -> do
     let langs = maybeToList lang
-    let t = showWorkingSchedule langs g openDaysWithSlots
+    let t = renderWorkingSchedule langs g openDaysWithSlots
     messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. s, CallbackQueryMultiChatChatId ==. auid] []
     flip catchError (liftIO . print) $ case (recreate, messages) of
       (False, [Entity _ CallbackQueryMultiChat {..}]) -> do
@@ -907,7 +907,7 @@ makeSchedule langs pool chat day' gid = do
               updatedDays <- runInPool pool $ do
                 deleteWhere [DefaultOpenDayGarage ==. gid]
                 mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
-                deleteWhere [OpenDayGarage ==. gid, OpenDayDate <-. (nextWeek L.\\ days)]
+                deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
                 mapM
                   ( \updatedDay ->
                       upsertBy
@@ -932,8 +932,8 @@ mergeIntervals slots = go (L.sort slots)
 renderSchedule :: [Lang] -> [(Day, [(TimeOfDay, TimeOfDay)])] -> Text
 renderSchedule langs s =
   intercalate
-    "\n"
-    [ showDay langs day
+    "\n\n"
+    [ "<b>" <> showDay langs day <> "</b>"
         <> "\n\n"
         <> intercalate
           "\n"
@@ -1080,7 +1080,7 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                       (sendMessageRequest channelChatId "Welcome, admin!")
                 Just "/setopendays" -> runInPool pool (selectList [] []) >>= mapM_ (makeSchedule langs pool chat Nothing . entityKey)
                 Just "/lock" -> runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs pool chat Nothing . entityKey)
-                Just "/workingshowWorkingScheduleschedule" -> do
+                Just "/workingschedule" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
                   runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (nextWeekStart today) . entityKey)
                 Just "/workingschedulethisweek" -> do
