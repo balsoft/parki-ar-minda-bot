@@ -844,7 +844,13 @@ updateWorkingSchedule pool recreate weekStart garage = do
                   editMessageTextParseMode = Just HTML
                 }
       (_, msgs) -> do
-        MessageId mid <- messageMessageId . responseResult <$> sendMessage (sendMessageRequest (ChatId (fromIntegral auid)) t) {sendMessageParseMode = Just HTML, sendMessageReplyMarkup = Just $ ik [[ikb (tr langs MsgLock) ("lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]}
+        MessageId mid <-
+          messageMessageId . responseResult
+            <$> sendMessage
+              (sendMessageRequest (ChatId (fromIntegral auid)) t)
+                { sendMessageParseMode = Just HTML,
+                  sendMessageReplyMarkup = Just $ ik [[ikb (tr langs MsgLock) ("admin_lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]
+                }
         void $ runInPool pool $ insert $ CallbackQueryMultiChat auid (fromIntegral mid) s
         forM_ msgs $ \(Entity _ CallbackQueryMultiChat {..}) -> do
           flip catchError (liftIO . print) $ void $ deleteMessage (ChatId (fromIntegral auid)) (MessageId $ fromIntegral callbackQueryMultiChatMsgId)
@@ -933,7 +939,9 @@ renderSchedule :: [Lang] -> [(Day, [(TimeOfDay, TimeOfDay)])] -> Text
 renderSchedule langs s =
   intercalate
     "\n\n"
-    [ "<b>" <> showDay langs day <> "</b>"
+    [ "<b>"
+        <> showDay langs day
+        <> "</b>"
         <> "\n\n"
         <> intercalate
           "\n"
@@ -1198,7 +1206,6 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
           volunteerHandler volunteer upd
         (Nothing, Nothing) ->
           newUserHandler upd
-
     _ ->
       liftIO $ hPutStrLn stderr "Event from a non-private chat; Doing nothing"
   liftIO $ threadDelay 1500000
