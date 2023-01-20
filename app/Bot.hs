@@ -542,7 +542,7 @@ cancelSlot pool slotId = do
           )
             { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup =
-                Just (ik [[ikb (tr adminLangs MsgLock) ("lock_" <> pack (showGregorian weekStart))]])
+                Just (ik [[ikb (tr adminLangs MsgLock) ("admin_lock_" <> pack (showGregorian weekStart))]])
             }
 
 askCancelSlot ::
@@ -656,10 +656,10 @@ askForPermission pool User {userId = UserId uid} = do
                   ik
                     [ [ ikb
                           (allGood <> tr langs MsgAllow)
-                          ("allow_" <> showSqlKey tuid),
+                          ("admin_allow_" <> showSqlKey tuid),
                         ikb
                           (bad <> tr langs MsgDecline)
-                          ("decline_" <> showSqlKey tuid)
+                          ("admin_decline_" <> showSqlKey tuid)
                       ]
                     ]
             }
@@ -954,7 +954,7 @@ lockSchedule langs pool ChatChannel {..} day' gid = do
       (sendMessageRequest channelChatId (tr langs (MsgLocked $ renderGarage g)))
         { sendMessageParseMode = Just HTML,
           sendMessageReplyMarkup =
-            Just $ ik [[ikb (tr langs MsgUnlock) ("unlock_" <> showSqlKey gid <> "_" <> pack (showGregorian day))]]
+            Just $ ik [[ikb (tr langs MsgUnlock) ("admin_unlock_" <> showSqlKey gid <> "_" <> pack (showGregorian day))]]
         }
   let nextWeek = take 7 [day ..]
   let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
@@ -1097,19 +1097,19 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                 void $
                   answerCallbackQuery (answerCallbackQueryRequest callbackQueryId)
                 case T.splitOn "_" txt of
-                  ["allow", t] -> do
+                  ["admin", "allow", t] -> do
                     allowVolunteer pool $ readSqlKey t
                     void $ deleteMessage channelChatId messageMessageId
-                  ["decline", _] ->
+                  ["admin", "decline", _] ->
                     void $ deleteMessage channelChatId messageMessageId
-                  ["ban", t] ->
+                  ["admin", "ban", t] ->
                     banVolunteer pool $ read $ unpack t
-                  ["cancel", t] -> do
+                  ["admin", "cancel", t] -> do
                     void $ deleteMessage channelChatId messageMessageId
                     cancelSlot pool $ readSqlKey t
-                  ["setopendays", g, d] -> makeSchedule langs pool chat (parseGregorian d) (readSqlKey g)
-                  ["lock", g, d] -> lockSchedule langs pool chat (parseGregorian d) (readSqlKey g)
-                  ["unlock", g, d] -> unlockSchedule langs pool chat (parseGregorian d) (readSqlKey g)
+                  ["admin", "setopendays", g, d] -> makeSchedule langs pool chat (parseGregorian d) (readSqlKey g)
+                  ["admin", "lock", g, d] -> lockSchedule langs pool chat (parseGregorian d) (readSqlKey g)
+                  ["admin", "unlock", g, d] -> unlockSchedule langs pool chat (parseGregorian d) (readSqlKey g)
                   _ -> pure ()
             _ -> pure ()
 
@@ -1185,17 +1185,20 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                 _ -> void $ reply m langs MsgNotRecognized
             _ -> pure ()
 
-      runInPool pool (getBy (UniqueAdmin dbUserId)) >>= \case
-        Just (Entity _ _) -> do
+      runInPool pool ((,) <$> getBy (UniqueAdmin dbUserId) <*> getBy (UniqueVolunteer dbUserId)) >>= \case
+        (Just (Entity _ _), Just (Entity volunteer _)) -> do
+          setCommands (adminCommands ++ volunteerCommands) chat
+          volunteerHandler volunteer upd
+          adminHandler upd
+        (Just (Entity _ _), Nothing) -> do
           setCommands adminCommands chat
           adminHandler upd
-        _ ->
-          runInPool pool (getBy (UniqueVolunteer dbUserId)) >>= \case
-            Just (Entity volunteer _) -> do
-              setCommands volunteerCommands chat
-              volunteerHandler volunteer upd
-            Nothing ->
-              newUserHandler upd
+        (Nothing, Just (Entity volunteer _)) -> do
+          setCommands volunteerCommands chat
+          volunteerHandler volunteer upd
+        (Nothing, Nothing) ->
+          newUserHandler upd
+
     _ ->
       liftIO $ hPutStrLn stderr "Event from a non-private chat; Doing nothing"
   liftIO $ threadDelay 1500000

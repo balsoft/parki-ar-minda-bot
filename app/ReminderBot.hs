@@ -131,7 +131,7 @@ notifyUnconfirmedSlots pool now = do
                   ik
                     [ [ ikb
                           (tr langs MsgSlotCancel)
-                          ("cancel_" <> showSqlKey slotId)
+                          ("admin_cancel_" <> showSqlKey slotId)
                       ]
                     ]
             }
@@ -175,7 +175,7 @@ sendChecklist pool now = do
         >>= \entities -> do
           selectList
             [ ScheduledSlotDay <-. fmap entityKey entities,
-              ScheduledSlotEndTime <=. localTimeOfDay now,
+              ScheduledSlotEndTime >=. localTimeOfDay now,
               ScheduledSlotState ==. ScheduledSlotConfirmed
             ]
             []
@@ -218,7 +218,7 @@ sendOpenDayReminder pool now = do
             )
               { sendMessageParseMode = Just HTML,
                 sendMessageReplyMarkup =
-                  Just $ ik [[ikb (tr langs (MsgSetOpenDays $ renderGarageText garage)) ("setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))] | (Entity gid garage) <- garages]
+                  Just $ ik [[ikb (tr langs (MsgSetOpenDays $ renderGarageText garage)) ("admin_setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))] | (Entity gid garage) <- garages]
               }
 
 reminderBot :: ConnectionPool -> ClientM ()
