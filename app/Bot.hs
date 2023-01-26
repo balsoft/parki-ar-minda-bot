@@ -39,6 +39,7 @@ import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Hamlet (ihamlet)
 import Text.Shakespeare.I18N (Lang)
 import Util
+import Data.List ((\\))
 
 insertCallbackQueryMessage :: ConnectionPool -> Response Message -> ClientM (Response Message)
 insertCallbackQueryMessage pool r@(Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}, messageReplyMarkup = Just (InlineKeyboardMarkup buttons)}}) = runInPool pool $ do
@@ -913,7 +914,7 @@ makeSchedule langs pool chat day' gid = do
               updatedDays <- runInPool pool $ do
                 deleteWhere [DefaultOpenDayGarage ==. gid]
                 mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
-                deleteWhere [OpenDayGarage ==. gid, OpenDayDate /<-. days]
+                deleteWhere [OpenDayGarage ==. gid, OpenDayDate <-. (take 7 [day..] \\ days)]
                 mapM
                   ( \updatedDay ->
                       upsertBy
