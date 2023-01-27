@@ -27,6 +27,8 @@ data Bot
 
 instance ToMessage (MarkupM a) where
   toMessage h = toStrict $ renderHtml (void h)
+instance ToMessage Int where
+  toMessage = pack . show
 
 mkMessage "Bot" "messages" "en"
 

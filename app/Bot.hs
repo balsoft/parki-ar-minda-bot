@@ -1134,9 +1134,15 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                 Just text -> case messageReplyToMessage of
                   Just (Message {messageMessageId = MessageId mid}) ->
                     runInPool pool (selectFirst [ScheduledSlotState ==. ScheduledSlotFinished (fromIntegral mid)] []) >>= \case
-                      Just (Entity slotId ScheduledSlot {..}) -> case readMay (unpack text) of
+                      Just (Entity slotId slot@ScheduledSlot {..}) -> case readMay (unpack text) of
                         Just visitors -> do
+                          slotDesc <- runInPool pool $ getSlotFullDesc langs slot
                           runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotChecklistComplete {visitors}]
+                          runInPool pool getAdmins >>= mapM_ (\TelegramUser {..} -> sendMessage (sendMessageRequest (ChatId (fromIntegral telegramUserUserId)) (defaultRender langs [ihamlet|
+                            _{MsgReported visitors}
+                            \
+                            #{slotDesc}
+                            |])))
                           void $ reply m langs MsgAck
                         Nothing -> void $ reply m langs MsgNotRecognized
                       Nothing -> void $ reply m langs MsgNotRecognized

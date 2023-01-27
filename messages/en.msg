@@ -91,6 +91,8 @@ ReportVisitors: Report how many visitors there were, by <b>replying to this mess
 Number: Number
 Ack: Acknowledged, thanks!
 
+Reported visitors@Int: There were #{visitors} visitors during this duty:
+
 ScheduleIntro garage@Html: Schedule for #{garage}:
 
 Monday: Monday
