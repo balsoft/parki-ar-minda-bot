@@ -946,7 +946,7 @@ renderSchedule langs s =
         <> "\n\n"
         <> intercalate
           "\n"
-          [defaultRender langs [ihamlet|#{clock}#{showHourMinutes start}-#{showHourMinutes end}|] | (start, end) <- mergeIntervals times]
+          [showHourMinutes start <> "-" <> showHourMinutes end | (start, end) <- mergeIntervals times]
       | (day, times) <- L.sort s,
         times /= []
     ]
