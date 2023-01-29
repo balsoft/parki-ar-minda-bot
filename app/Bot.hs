@@ -509,7 +509,7 @@ cancelSlot pool slotId = do
       desc <- getSlotDesc langs slot
       pure (slot, desc, openDayAvailable, langs, user, openDayGarage, weekStart)
   runInPool pool $ delete slotId
-  void $
+  flip catchError (liftIO . print) $ void $
     sendMessage
       ( sendMessageRequest
           (ChatId (fromIntegral telegramUserUserId))
