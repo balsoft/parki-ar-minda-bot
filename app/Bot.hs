@@ -599,7 +599,7 @@ askCancelSlot langs pool ChatChannel {..} originalMsgId slotId = do
       )
   void $ deleteMessage channelChatId (messageMessageId msg)
   when doCancel $ do
-    void $ deleteMessage channelChatId originalMsgId
+    flip catchError (liftIO . print) $ void $ deleteMessage channelChatId originalMsgId
     cancelSlot pool slotId
   pure doCancel
 
