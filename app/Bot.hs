@@ -18,6 +18,7 @@ import Control.Monad.Except (MonadError (catchError))
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT)
 import Data.Functor (($>), (<&>))
+import Data.List ((\\))
 import qualified Data.List as L
 import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe, maybeToList)
 import Data.Text as T (Text, intercalate, pack, splitOn, stripPrefix, unpack)
@@ -39,7 +40,6 @@ import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Hamlet (ihamlet)
 import Text.Shakespeare.I18N (Lang)
 import Util
-import Data.List ((\\))
 
 insertCallbackQueryMessage :: ConnectionPool -> Response Message -> ClientM (Response Message)
 insertCallbackQueryMessage pool r@(Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}, messageReplyMarkup = Just (InlineKeyboardMarkup buttons)}}) = runInPool pool $ do
@@ -509,20 +509,21 @@ cancelSlot pool slotId = do
       desc <- getSlotDesc langs slot
       pure (slot, desc, openDayAvailable, langs, user, openDayGarage, weekStart)
   runInPool pool $ delete slotId
-  flip catchError (liftIO . print) $ void $
-    sendMessage
-      ( sendMessageRequest
-          (ChatId (fromIntegral telegramUserUserId))
-          ( defaultRender
-              langs
-              [ihamlet|
+  flip catchError (liftIO . print) $
+    void $
+      sendMessage
+        ( sendMessageRequest
+            (ChatId (fromIntegral telegramUserUserId))
+            ( defaultRender
+                langs
+                [ihamlet|
             #{attention}_{MsgYourSlotCancelled}
             #{slotDesc}
           |]
-          )
-      )
-        { sendMessageParseMode = Just HTML
-        }
+            )
+        )
+          { sendMessageParseMode = Just HTML
+          }
   updateWorkingSchedule pool False weekStart gid `catchError` (liftIO . print)
   admins <- runInPool pool getAdmins
   unless dayAvailable $
@@ -914,7 +915,7 @@ makeSchedule langs pool chat day' gid = do
               updatedDays <- runInPool pool $ do
                 deleteWhere [DefaultOpenDayGarage ==. gid]
                 mapM_ (insert . DefaultOpenDay gid) (fmap dayOfWeek days)
-                deleteWhere [OpenDayGarage ==. gid, OpenDayDate <-. (take 7 [day..] \\ days)]
+                deleteWhere [OpenDayGarage ==. gid, OpenDayDate <-. (take 7 [day ..] \\ days)]
                 mapM
                   ( \updatedDay ->
                       upsertBy
@@ -1138,11 +1139,24 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                         Just visitors -> do
                           slotDesc <- runInPool pool $ getSlotFullDesc langs slot
                           runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotChecklistComplete {visitors}]
-                          runInPool pool getAdmins >>= mapM_ (\TelegramUser {..} -> sendMessage (sendMessageRequest (ChatId (fromIntegral telegramUserUserId)) (defaultRender langs [ihamlet|
+                          runInPool pool getAdmins
+                            >>= mapM_
+                              ( \TelegramUser {..} ->
+                                  sendMessage
+                                    ( sendMessageRequest
+                                        (ChatId (fromIntegral telegramUserUserId))
+                                        ( defaultRender
+                                            langs
+                                            [ihamlet|
                             _{MsgReported visitors}
                             \
                             #{slotDesc}
-                            |])))
+                            |]
+                                        )
+                                    )
+                                      { sendMessageParseMode = Just HTML
+                                      }
+                              )
                           void $ reply m langs MsgAck
                         Nothing -> void $ reply m langs MsgNotRecognized
                       Nothing -> void $ reply m langs MsgNotRecognized
