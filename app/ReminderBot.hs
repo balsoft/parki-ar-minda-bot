@@ -113,6 +113,7 @@ notifyUnconfirmedSlots pool now = do
     forM_ admins $ \(TelegramUser auid lang _ _) -> do
       let langs = maybeToList lang
       slotFullDesc <- runInPool pool (getSlotFullDesc langs slot)
+      runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotUnconfirmed]
       void $
         sendMessage
           ( sendMessageRequest

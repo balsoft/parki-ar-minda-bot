@@ -58,6 +58,7 @@ instance PersistFieldSql DayOfWeek where
 data ScheduledSlotState
   = ScheduledSlotCreated
   | ScheduledSlotAwaitingConfirmation Bool
+  | ScheduledSlotUnconfirmed
   | ScheduledSlotConfirmed
   | ScheduledSlotFinished { checklistMsg :: Int }
   | ScheduledSlotChecklistComplete { visitors :: Int }
