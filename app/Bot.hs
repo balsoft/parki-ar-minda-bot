@@ -843,7 +843,8 @@ updateWorkingSchedule pool recreate weekStart garage = do
               (editMessageTextRequest t)
                 { editMessageTextMessageId = Just (MessageId $ fromIntegral callbackQueryMultiChatMsgId),
                   editMessageTextChatId = Just $ SomeChatId (ChatId $ fromIntegral auid),
-                  editMessageTextParseMode = Just HTML
+                  editMessageTextParseMode = Just HTML,
+                  editMessageTextReplyMarkup = Just $ ik [[ikb (tr langs MsgLock) ("admin_lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]
                 }
       (_, msgs) -> do
         MessageId mid <-
