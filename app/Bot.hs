@@ -451,7 +451,7 @@ list langs ChatChannel {channelChatId} volunteer pool = do
   slots <-
     runInPool pool $ do
       days <- fmap entityKey <$> selectList [OpenDayDate >=. today] []
-      selectList [ScheduledSlotUser ==. volunteer, ScheduledSlotDay <-. days] []
+      selectList [ScheduledSlotUser ==. volunteer, ScheduledSlotDay <-. days, ScheduledSlotState <-. [ScheduledSlotCreated, ScheduledSlotAwaitingConfirmation True, ScheduledSlotAwaitingConfirmation False, ScheduledSlotConfirmed, ScheduledSlotUnconfirmed]] []
   when (null slots) $ void $ send channelChatId langs MsgNoSlots
   forM_ slots $ \(Entity slotId slot) -> do
     slotDesc <- runInPool pool $ getSlotDesc langs slot

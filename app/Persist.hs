@@ -55,13 +55,15 @@ instance PersistField DayOfWeek where
 instance PersistFieldSql DayOfWeek where
   sqlType _ = SqlString
 
+-- | Possible states of a scheduled slot
 data ScheduledSlotState
-  = ScheduledSlotCreated
-  | ScheduledSlotAwaitingConfirmation Bool
-  | ScheduledSlotUnconfirmed
-  | ScheduledSlotConfirmed
-  | ScheduledSlotFinished { checklistMsg :: Int }
-  | ScheduledSlotChecklistComplete { visitors :: Int }
+  = ScheduledSlotCreated -- ^ Scheduled slot created, it is still too early for a confirmation
+  | ScheduledSlotAwaitingConfirmation -- ^ A confirmation request has been sent, but not responded to
+      Bool -- ^ Whether the confirmation reminder has been sent
+  | ScheduledSlotUnconfirmed -- ^ Slot has not been confirmed on time
+  | ScheduledSlotConfirmed -- ^ Slot has been confirmed
+  | ScheduledSlotFinished { checklistMsg :: Int } -- ^ Duty time has finished
+  | ScheduledSlotChecklistComplete { visitors :: Int } -- ^ After-duty checklist is complete
   deriving (Show, Read)
 
 instance PersistField ScheduledSlotState where
