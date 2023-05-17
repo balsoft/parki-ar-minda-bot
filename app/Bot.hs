@@ -1147,7 +1147,7 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                                     ( sendMessageRequest
                                         (ChatId (fromIntegral telegramUserUserId))
                                         ( defaultRender
-                                            langs
+                                            (maybeToList telegramUserLang)
                                             [ihamlet|
                             _{MsgReported visitors}
                             \

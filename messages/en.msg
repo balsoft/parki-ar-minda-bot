@@ -67,7 +67,7 @@ GarageOpenDays garage@Html: Which day should the #{garage} garage be open?
 WorkingScheduleFor garage@Html: Working schedule for #{garage}:
 NewScheduleFor garage@Html: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
 SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.
-SlotStillNotConfirmed: Volunteer still has not confirmed this time slot:
+SlotStillNotConfirmed: <b>Volunteer still has not confirmed this time slot</b>:
 SlotCancel: Cancel this slot
 SetOpenDaysReminder start@Text: It's time to set the open days for garages for the next week (starting #{start})!
 SetOpenDays garageName@Text: Set the open days for #{garageName}

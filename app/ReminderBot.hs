@@ -121,7 +121,7 @@ notifyUnconfirmedSlots pool now = do
               ( defaultRender
                   langs
                   [ihamlet|
-                _{MsgSlotStillNotConfirmed}
+                #{attention} _{MsgSlotStillNotConfirmed}
                 #{slotFullDesc}
               |]
               )

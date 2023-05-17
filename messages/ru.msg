@@ -68,7 +68,7 @@ GarageOpenDays garage@Html: В какие дни гараж #{garage} долже
 WorkingScheduleFor garage@Html: Рабочее расписание для #{garage}:
 NewScheduleFor garage@Html: Новое расписание для #{garage}! Вы можете использовать /signup или нажать на одну из кнопок ниже.
 SlotCancelled: Эта запись была <b>отменена</b>, а значит что финальное расписание теперь неверно. Используйте /lock чтобы сгенерировать новое.
-SlotStillNotConfirmed: Волонтёр всё ещё не подтвердил эту запись:
+SlotStillNotConfirmed: <b>Волонтёр всё ещё не подтвердил эту запись</b>:
 SlotCancel: Отменить эту запись
 SetOpenDaysReminder start@Text: Пришло время выбрать, в какие дни гаражи будут открыты на следующей недел (начинающейся с #{start})!
 SetOpenDays garageName@Text: Выбрать дни работы #{garageName}

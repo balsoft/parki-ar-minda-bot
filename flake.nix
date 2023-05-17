@@ -42,7 +42,7 @@
             ghcid
             cabal-install
           ];
-          inputsFrom = [ self.packages.${system}.default ];
+          inputsFrom = [ self.packages.${system}.default.env ];
         };
       });
 }
