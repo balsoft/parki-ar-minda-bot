@@ -24,10 +24,15 @@
 
         packageName = "parki-ar-minda-bot";
       in {
-        packages.${packageName} = haskellPackages.callCabal2nix packageName self
-          rec {
+        packages = {
+          default = self.packages.${system}.${packageName};
+          ${packageName} = haskellPackages.callCabal2nix packageName self rec {
             # Dependency overrides go here
           };
+          "${packageName}-static" = (pkgs.pkgsStatic.haskellPackages.extend
+            telegram-bot-monadic.overlays.default).callCabal2nix packageName
+            self { };
+        };
 
         defaultPackage = self.packages.${system}.${packageName};
 
@@ -37,8 +42,7 @@
             ghcid
             cabal-install
           ];
-          inputsFrom =
-            map (pkg: pkg.env) (builtins.attrValues self.packages.${system});
+          inputsFrom = [ self.packages.${system}.default ];
         };
       });
 }
