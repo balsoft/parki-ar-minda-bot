@@ -305,12 +305,11 @@ endTimeStep langs _ chat@ChatChannel {..} msgId day startTime = do
     (clock <> tr langs MsgChooseEndTime)
     (timeGrid day (Just startTime) <> [[ikb (clock <> tr langs MsgChangeStartTime) ("day_" <> showSqlKey day)], [cancelButton langs]])
 
+-- Intervals interesect iff the start of either interval lies within the other interval
 timesIntersect :: Ord a => (a, a) -> (a, a) -> Bool
 timesIntersect (sa, ea) (sb, eb) =
-  sa <= sb && sb <= ea
-    || sa <= eb && eb <= sa
-    || sb <= sa && sa <= eb
-    || sb <= ea && ea <= eb
+  sa <= sb && sb < ea -- Start of b lies within a
+  || sb <= sa && sa < eb -- Start of a lies within b
 
 askCreateStep ::
   [Lang] ->
