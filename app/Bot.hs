@@ -309,7 +309,7 @@ endTimeStep langs _ chat@ChatChannel {..} msgId day startTime = do
 timesIntersect :: Ord a => (a, a) -> (a, a) -> Bool
 timesIntersect (sa, ea) (sb, eb) =
   sa <= sb && sb < ea -- Start of b lies within a
-  || sb <= sa && sa < eb -- Start of a lies within b
+    || sb <= sa && sa < eb -- Start of a lies within b
 
 askCreateStep ::
   [Lang] ->
@@ -534,7 +534,7 @@ cancelSlot pool slotId = do
           ( sendMessageRequest
               (ChatId (fromIntegral auid))
               ( defaultRender
-                  langs
+                  adminLangs
                   [ihamlet|
                 #{attention}_{MsgSlotCancelled}
                 #{slotFullDesc}
@@ -647,7 +647,7 @@ askForPermission pool User {userId = UserId uid} = do
               ( defaultRender
                   langs
                   [ihamlet|
-              _{MsgVolunteerRequest $ renderUser user}
+              #{hello}_{MsgVolunteerRequest $ renderUser user}
               |]
               )
           )
@@ -680,7 +680,12 @@ allowVolunteer pool tuid = do
         =<< sendMessage
           ( sendMessageRequest
               (ChatId (fromIntegral auid))
-              (tr langs $ MsgNewVolunteer $ renderUser user)
+              ( defaultRender
+                  langs
+                  [ihamlet|
+                #{party}_{MsgNewVolunteer $ renderUser user}
+              |]
+              )
           )
             { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup =

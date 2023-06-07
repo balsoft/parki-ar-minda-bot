@@ -36,7 +36,7 @@
 
         defaultPackage = self.packages.${system}.${packageName};
 
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             haskellPackages.haskell-language-server # you must build it with your ghc to work
             ghcid

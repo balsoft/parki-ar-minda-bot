@@ -13,6 +13,12 @@ checkIf b =
     then checkmark
     else ""
 
+hello :: Text
+hello = "👋 "
+
+party :: Text
+party = "🥳 "
+
 attention :: Text
 attention = "⚠ "
 
