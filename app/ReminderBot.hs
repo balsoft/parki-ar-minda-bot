@@ -24,6 +24,7 @@ import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Hamlet
 import Util
+import Bot
 
 sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationRequests pool now = do
@@ -69,14 +70,14 @@ sendConfirmationRequests pool now = do
 sendConfirmationReminders :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationReminders pool now = do
   let tomorrow = succ $ localDay now
+  tomorrow' <- runInPool pool $ selectList [OpenDayDate ==. tomorrow] []
   slotsNotConfirmed <-
     runInPool pool $ do
-      selectList [OpenDayDate ==. tomorrow] [] >>= \entities -> do
-        selectList
-          [ ScheduledSlotDay <-. fmap entityKey entities,
-            ScheduledSlotState ==. ScheduledSlotAwaitingConfirmation False
-          ]
-          []
+      selectList
+        [ ScheduledSlotDay <-. fmap entityKey tomorrow',
+          ScheduledSlotState ==. ScheduledSlotAwaitingConfirmation False
+        ]
+        []
   forM_ slotsNotConfirmed $ \(Entity slotId ScheduledSlot {..}) -> do
     Just TelegramUser {..} <-
       runInPool pool $ do
@@ -92,22 +93,21 @@ sendConfirmationReminders pool now = do
         )
           { sendMessageParseMode = Just HTML
           }
+  forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
 
 notifyUnconfirmedSlots :: ConnectionPool -> LocalTime -> ClientM ()
 notifyUnconfirmedSlots pool now = do
   let today = localDay now
+  today' <- runInPool pool $ selectList [OpenDayDate ==. today] []
   slotsNotConfirmed <-
-    runInPool pool $ do
-      selectFirst [OpenDayDate ==. today] [] >>= \case
-        Nothing -> pure []
-        Just (Entity today' _) -> do
-          selectList
-            [ ScheduledSlotDay ==. today',
-              ScheduledSlotState <-. (ScheduledSlotAwaitingConfirmation <$> [True, False]),
-              ScheduledSlotStartTime
-                <=. localTimeOfDay (addLocalTime (2 * 60 * 60) now)
-            ]
-            []
+    runInPool pool $
+      selectList
+        [ ScheduledSlotDay <-. fmap entityKey today',
+          ScheduledSlotState <-. (ScheduledSlotAwaitingConfirmation <$> [True, False]),
+          ScheduledSlotStartTime
+            <=. localTimeOfDay (addLocalTime (2 * 60 * 60) now)
+        ]
+        []
   admins <- runInPool pool getAdmins
   forM_ slotsNotConfirmed $ \(Entity slotId slot) -> do
     forM_ admins $ \(TelegramUser auid lang _ _) -> do
@@ -136,6 +136,7 @@ notifyUnconfirmedSlots pool now = do
                       ]
                     ]
             }
+  forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendLastReminders :: ConnectionPool -> LocalTime -> ClientM ()
 sendLastReminders pool now = do
@@ -170,16 +171,15 @@ sendLastReminders pool now = do
 sendChecklist :: ConnectionPool -> LocalTime -> ClientM ()
 sendChecklist pool now = do
   let today = localDay now
+  today' <- runInPool pool $ selectList [OpenDayDate ==. today] []
   slotsFinished <-
     runInPool pool $ do
-      selectList [OpenDayDate ==. today] []
-        >>= \entities -> do
-          selectList
-            [ ScheduledSlotDay <-. fmap entityKey entities,
-              ScheduledSlotEndTime <=. localTimeOfDay now,
-              ScheduledSlotState ==. ScheduledSlotConfirmed
-            ]
-            []
+      selectList
+        [ ScheduledSlotDay <-. fmap entityKey today',
+          ScheduledSlotEndTime <=. localTimeOfDay now,
+          ScheduledSlotState ==. ScheduledSlotConfirmed
+        ]
+        []
   forM_ slotsFinished $ \(Entity slotId ScheduledSlot {..}) -> do
     Just TelegramUser {..} <-
       runInPool pool $ do
@@ -198,6 +198,7 @@ sendChecklist pool now = do
             }
     runInPool pool $
       update slotId [ScheduledSlotState =. ScheduledSlotFinished (fromIntegral mid)]
+  forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendOpenDayReminder :: ConnectionPool -> LocalTime -> ClientM ()
 sendOpenDayReminder pool now = do

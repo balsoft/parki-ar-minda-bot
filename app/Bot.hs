@@ -9,6 +9,7 @@
 
 module Bot
   ( bot,
+    updateWorkingScheduleForDay
   )
 where
 
@@ -615,6 +616,7 @@ confirmSlot langs pool ChatChannel {..} originalMsgId slotId = do
   slotDesc <- runInPool pool $ getSlotDesc langs slot
   void $ deleteMessage channelChatId originalMsgId
   runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotConfirmed]
+  updateWorkingScheduleForDay pool False (scheduledSlotDay slot)
   void $
     sendMessage
       ( sendMessageRequest
@@ -802,7 +804,15 @@ getSubscriptions = do
           ++ fmap (subscriptionUser . entityVal) subscriptions
   catMaybes <$> mapM get ids
 
-renderWorkingSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay)])] -> Text
+renderState :: ScheduledSlotState -> Text
+renderState ScheduledSlotCreated = news <> "Created"
+renderState (ScheduledSlotAwaitingConfirmation _) = clock <> "Awaiting Confirmation"
+renderState ScheduledSlotUnconfirmed = attention <> "Not Confirmed"
+renderState ScheduledSlotConfirmed = allGood <> "Confirmed"
+renderState ScheduledSlotFinished { } = allGood <> "Finished"
+renderState ScheduledSlotChecklistComplete { visitors } = allGood <> "Finished, " <> (pack $ show visitors) <> " visitors"
+
+renderWorkingSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay, ScheduledSlotState)])] -> Text
 renderWorkingSchedule langs garage days =
   defaultRender
     langs
@@ -812,9 +822,9 @@ renderWorkingSchedule langs garage days =
       \
       \
       <b>#{showDay langs day}
-      $forall (user, start, end) <- slots
+      $forall (user, start, end, state) <- slots
         \
-        #{clock}#{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}
+        #{clock}#{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}: #{renderState state}
   |]
 
 updateWorkingSchedule :: ConnectionPool -> Bool -> Day -> GarageId -> ClientM ()
@@ -832,10 +842,11 @@ updateWorkingSchedule pool recreate weekStart garage = do
               times <- forM slots $ \(Entity _ ScheduledSlot {..}) -> do
                 Just Volunteer {..} <- get scheduledSlotUser
                 Just u <- get volunteerUser
-                pure (u, scheduledSlotStartTime, scheduledSlotEndTime)
+                pure (u, scheduledSlotStartTime, scheduledSlotEndTime, scheduledSlotState)
               pure (openDayDate, times)
           )
   forM_ admins $ \(Just (TelegramUser auid lang _ _)) -> do
+    liftIO $ threadDelay 100000 -- Telegram rate limits
     let langs = maybeToList lang
     let t = renderWorkingSchedule langs g openDaysWithSlots
     messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. s, CallbackQueryMultiChatChatId ==. auid] []
@@ -862,6 +873,16 @@ updateWorkingSchedule pool recreate weekStart garage = do
         forM_ msgs $ \(Entity _ CallbackQueryMultiChat {..}) -> do
           flip catchError (liftIO . print) $ void $ deleteMessage (ChatId (fromIntegral auid)) (MessageId $ fromIntegral callbackQueryMultiChatMsgId)
           runInPool pool $ deleteWhere [CallbackQueryMultiChatChatId ==. auid, CallbackQueryMultiChatMsgId ==. callbackQueryMultiChatMsgId]
+
+updateWorkingScheduleForDay :: ConnectionPool -> Bool -> OpenDayId -> ClientM ()
+updateWorkingScheduleForDay pool recreate dayId = do
+  (weekStart, gid) <-
+    runInPool pool $ do
+      Just OpenDay {..} <- get dayId
+      let weekStart = thisWeekStart openDayDate
+      pure (weekStart, openDayGarage)
+  updateWorkingSchedule pool recreate weekStart gid
+
 
 sendOpenDaySchedule :: ConnectionPool -> Day -> GarageId -> [Entity OpenDay] -> ClientM ()
 sendOpenDaySchedule pool weekStart garage days = do
@@ -1140,28 +1161,10 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                 Just text -> case messageReplyToMessage of
                   Just (Message {messageMessageId = MessageId mid}) ->
                     runInPool pool (selectFirst [ScheduledSlotState ==. ScheduledSlotFinished (fromIntegral mid)] []) >>= \case
-                      Just (Entity slotId slot@ScheduledSlot {..}) -> case readMay (unpack text) of
+                      Just (Entity slotId ScheduledSlot {..}) -> case readMay (unpack text) of
                         Just visitors -> do
-                          runInPool pool getAdmins
-                            >>= mapM_
-                              ( \TelegramUser {telegramUserLang, telegramUserUserId} -> do
-                                  slotDesc <- runInPool pool $ getSlotFullDesc (maybeToList telegramUserLang) slot
-                                  runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotChecklistComplete {visitors}]
-                                  sendMessage
-                                    ( sendMessageRequest
-                                        (ChatId (fromIntegral telegramUserUserId))
-                                        ( defaultRender
-                                            (maybeToList telegramUserLang)
-                                            [ihamlet|
-                            _{MsgReported visitors}
-                            \
-                            #{slotDesc}
-                            |]
-                                        )
-                                    )
-                                      { sendMessageParseMode = Just HTML
-                                      }
-                              )
+                          runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotChecklistComplete {visitors}]
+                          updateWorkingScheduleForDay pool False scheduledSlotDay
                           void $ reply m langs MsgAck
                         Nothing -> void $ reply m langs MsgNotRecognized
                       Nothing -> void $ reply m langs MsgNotRecognized
