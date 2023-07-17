@@ -92,6 +92,13 @@ ReportVisitors: Отчитаться о количестве посетител�
 Number: Число
 Ack: Принято, спасибо!
 
+Legend: Легенда
+LegendCreated: Создано
+LegendAwaitingConfirmation: Ожидает Подтверждения
+LegendUnconfirmed: Не Подтверждено
+LegendConfirmed: Подтверждено
+LegendFinished: Окончено
+
 Reported visitors@Int: #{visitors} человек пришло на это дежурство:
 
 ScheduleIntro garage@Html: Расписание гаража в #{garage}:

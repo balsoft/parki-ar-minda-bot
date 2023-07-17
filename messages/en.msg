@@ -78,6 +78,13 @@ NewVolunteer user@Html: #{user} has been added to the list of volunteers
 Ban: Ban user
 VolunteerRemoved user@Html: #{user} has been removed from the list of volunteers
 
+Legend: Legend
+LegendCreated: Created
+LegendAwaitingConfirmation: Awaiting Confirmation
+LegendUnconfirmed: Unconfirmed
+LegendConfirmed: Confirmed
+LegendFinished: Finished
+
 SlotFinished: Looks like your duty is <b>coming to an end</b>. Thank you for your help! Hopefully, it went well.
 
 Checklist: <b>Please, make sure to complete all the post-duty checklist items</b>:
