@@ -26,6 +26,10 @@ import System.Environment.Blank (getEnv, getEnvDefault)
 import Telegram.Bot.API (Token (Token), defaultRunBot)
 import Telegram.Bot.Monadic (runTelegramIntegrationBot)
 
+printError :: (Show a) => Either a b -> IO ()
+printError (Right _) = pure ()
+printError (Left a) = print a
+
 main :: IO ()
 main = do
   Just token <- getEnv "PARKI_AR_MINDA_TELEGRAM_TOKEN"
@@ -38,7 +42,7 @@ main = do
       forever $ do
         void $
           async $
-            catchError (print =<< defaultRunBot token' (reminderBot pool)) print
+            catchError (printError =<< defaultRunBot token' (reminderBot pool)) print
         threadDelay $ 60 * 1000000
   void $
     runTelegramIntegrationBot
