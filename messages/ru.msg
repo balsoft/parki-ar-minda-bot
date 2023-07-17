@@ -98,6 +98,7 @@ LegendAwaitingConfirmation: Ожидает Подтверждения
 LegendUnconfirmed: Не Подтверждено
 LegendConfirmed: Подтверждено
 LegendFinished: Окончено
+LegendVisitors: Посетители
 
 Reported visitors@Int: #{visitors} человек пришло на это дежурство:
 

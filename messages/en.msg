@@ -84,6 +84,7 @@ LegendAwaitingConfirmation: Awaiting Confirmation
 LegendUnconfirmed: Unconfirmed
 LegendConfirmed: Confirmed
 LegendFinished: Finished
+LegendVisitors: Visitors
 
 SlotFinished: Looks like your duty is <b>coming to an end</b>. Thank you for your help! Hopefully, it went well.
 

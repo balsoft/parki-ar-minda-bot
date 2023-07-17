@@ -5,49 +5,49 @@ module Symbols where
 import Data.Text
 
 checkmark :: Text
-checkmark = "✔ "
+checkmark = "✔"
 
 checkIf :: Bool -> Text
 checkIf b =
   if b
-    then checkmark
+    then checkmark <> " "
     else ""
 
 hello :: Text
-hello = "👋 "
+hello = "👋"
 
 party :: Text
-party = "🥳 "
+party = "🥳"
 
 attention :: Text
-attention = "⚠ "
+attention = "⚠"
 
 allGood :: Text
-allGood = "✅ "
+allGood = "✅"
 
 clock :: Text
-clock = "🕑 "
+clock = "🕑"
 
 hourglass :: Text
 hourglass = "⌛"
 
 finished :: Text
-finished = "🏁 "
+finished = "🏁"
 
 calendar :: Text
-calendar = "📅 "
+calendar = "📅"
 
 house :: Text
-house = "🏠 "
+house = "🏠"
 
 forbidden :: Text
-forbidden = "🚫 "
+forbidden = "🚫"
 
 bad :: Text
-bad = "❌ "
+bad = "❌"
 
 news :: Text
-news = "⚡ "
+news = "⚡"
 
 info :: Text
 info = "ⓘ "

@@ -167,10 +167,10 @@ dayStep langs pool chat@ChatChannel {..} msgId volunteer garage = do
         =<< selectList
           [OpenDayGarage ==. garage, OpenDayDate >. now, OpenDayAvailable ==. True]
           []
-  let anotherGarage = [[ikb (house <> tr langs MsgChangeGarage) "signup"]]
+  let anotherGarage = [[ikb (house <> " " <> tr langs MsgChangeGarage) "signup"]]
   if null days
     then do
-      menuStep chat msgId (defaultRender langs [ihamlet|#{forbidden}_{MsgNoDays}|]) (anotherGarage <> [[cancelButton langs]])
+      menuStep chat msgId (defaultRender langs [ihamlet|#{forbidden} _{MsgNoDays}|]) (anotherGarage <> [[cancelButton langs]])
     else do
       Just g <- runInPool pool $ get garage
       let weekStart = thisWeekStart (openDayDate $ entityVal $ (\(a, _, _) -> a) $ head days)
@@ -263,7 +263,7 @@ existingSlotsStep langs pool chat@ChatChannel {..} msgId volunteer day = do
   let anotherDay = [[ikb (tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)]]
   if not openDayAvailable
     then do
-      menuStep chat msgId (defaultRender langs [ihamlet|#{forbidden}_{MsgDayUnavailable}|]) (anotherDay <> [[cancelButton langs]])
+      menuStep chat msgId (defaultRender langs [ihamlet|#{forbidden} _{MsgDayUnavailable}|]) (anotherDay <> [[cancelButton langs]])
     else do
       slots <- runInPool pool $ othersSlots day volunteer
       if null slots
@@ -292,7 +292,7 @@ existingSlotsStep langs pool chat@ChatChannel {..} msgId volunteer day = do
             chat
             msgId
             (toStrict $ renderHtml $ defaultLayout langs [ihamlet|#{people} _{MsgOtherVolunteers} _{MsgChooseExistingSlot}#{mySlots}|])
-            (grid <> [[ikb (calendar <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [cancelButton langs]])
+            (grid <> [[ikb (calendar <> " " <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [cancelButton langs]])
 
 startTimeStep ::
   [Lang] ->
@@ -309,7 +309,7 @@ startTimeStep langs pool chat@ChatChannel {..} msgId volunteer day = do
     chat
     msgId
     (toStrict $ renderHtml $ defaultLayout langs [ihamlet|#{clock} _{MsgChooseStartTime}#{mySlots}|])
-    (timeGrid day Nothing <> [[ikb (calendar <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [cancelButton langs]])
+    (timeGrid day Nothing <> [[ikb (calendar <> " " <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [cancelButton langs]])
 
 endTimeStep ::
   [Lang] ->
@@ -323,8 +323,8 @@ endTimeStep langs _ chat@ChatChannel {..} msgId day startTime = do
   menuStep
     chat
     msgId
-    (clock <> tr langs MsgChooseEndTime)
-    (timeGrid day (Just startTime) <> [[ikb (clock <> tr langs MsgChangeStartTime) ("day_" <> showSqlKey day)], [cancelButton langs]])
+    (clock <> " " <> tr langs MsgChooseEndTime)
+    (timeGrid day (Just startTime) <> [[ikb (clock <> " " <> tr langs MsgChangeStartTime) ("day_" <> showSqlKey day)], [cancelButton langs]])
 
 -- Intervals interesect iff the start of either interval lies within the other interval
 timesIntersect :: Ord a => (a, a) -> (a, a) -> Bool
@@ -365,7 +365,12 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
   |]
   Just OpenDay {openDayGarage} <- runInPool pool $ get day
   mySlots <- mySlotsMsg langs pool day volunteer
-  let extraButtons = [[ikb (clock <> tr langs MsgChangeStartTime) ("day_" <> showSqlKey day)], [ikb (calendar <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)], [ikb (house <> tr langs MsgChangeGarage) "signup"], [cancelButton langs]]
+  let extraButtons =
+        [ [ikb (clock <> " " <> tr langs MsgChangeStartTime) ("day_" <> showSqlKey day)],
+          [ikb (calendar <> " " <> tr langs MsgChangeDay) ("garage_" <> showSqlKey openDayGarage)],
+          [ikb (house <> " " <> tr langs MsgChangeGarage) "signup"],
+          [cancelButton langs]
+        ]
   slotDesc <-
     runInPool pool $
       getSlotDesc
@@ -401,7 +406,7 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
           ^{othersMessage}
         |]
         )
-        ([[ikb (attention <> tr langs MsgCancelCreate) ("create_cancel_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
+        ([[ikb (attention <> " " <> tr langs MsgCancelCreate) ("create_cancel_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
     else do
       menuStep
         chat
@@ -415,7 +420,7 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
           #{slotDesc}#{mySlots}^{othersMessage}
         |]
         )
-        ([[ikb (allGood <> tr langs MsgYesCreate) ("create_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
+        ([[ikb (allGood <> " " <> tr langs MsgYesCreate) ("create_" <> showSqlKey day <> "_" <> showHourMinutes startTime <> "_" <> showHourMinutes endTime)]] <> extraButtons)
 
 cancelSlotButton :: [Lang] -> ScheduledSlotId -> InlineKeyboardButton
 cancelSlotButton langs slotId =
@@ -508,7 +513,7 @@ askDeleteUser ::
 askDeleteUser langs chat@ChatChannel {channelChatId} volunteer pool = do
   void $
     sendMessage
-      (sendMessageRequest channelChatId (attention <> tr langs MsgAreYouSure))
+      (sendMessageRequest channelChatId (attention <> " " <> tr langs MsgAreYouSure))
   untilRight (getNewMessage chat) (const $ pure ()) >>= \case
     Message {messageText = Just txt}
       | txt == tr langs MsgIAmSure -> do
@@ -537,7 +542,7 @@ cancelSlot pool slotId = do
             ( defaultRender
                 langs
                 [ihamlet|
-            #{attention}_{MsgYourSlotCancelled}
+            #{attention} _{MsgYourSlotCancelled}
             #{slotDesc}
           |]
             )
@@ -557,7 +562,7 @@ cancelSlot pool slotId = do
               ( defaultRender
                   adminLangs
                   [ihamlet|
-                #{attention}_{MsgSlotCancelled}
+                #{attention} _{MsgSlotCancelled}
                 #{slotFullDesc}
               |]
               )
@@ -585,7 +590,7 @@ askCancelSlot langs pool ChatChannel {..} originalMsgId slotId = do
             ( defaultRender
                 langs
                 [ihamlet|
-              #{attention}_{MsgSureCancel}
+              #{attention} _{MsgSureCancel}
               #{slotDesc}
             |]
             )
@@ -645,7 +650,7 @@ confirmSlot langs pool ChatChannel {..} originalMsgId slotId = do
           ( defaultRender
               langs
               [ihamlet|
-            #{allGood}_{MsgConfirmedShort}
+            #{allGood} _{MsgConfirmedShort}
             #{slotDesc}
           |]
           )
@@ -669,7 +674,7 @@ askForPermission pool User {userId = UserId uid} = do
               ( defaultRender
                   langs
                   [ihamlet|
-              #{hello}_{MsgVolunteerRequest $ renderUser user}
+              #{hello} _{MsgVolunteerRequest $ renderUser user}
               |]
               )
           )
@@ -678,10 +683,10 @@ askForPermission pool User {userId = UserId uid} = do
                 Just $
                   ik
                     [ [ ikb
-                          (allGood <> tr langs MsgAllow)
+                          (allGood <> " " <> tr langs MsgAllow)
                           ("admin_allow_" <> showSqlKey tuid),
                         ikb
-                          (bad <> tr langs MsgDecline)
+                          (bad <> " " <> tr langs MsgDecline)
                           ("admin_decline_" <> showSqlKey tuid)
                       ]
                     ]
@@ -705,7 +710,7 @@ allowVolunteer pool tuid = do
               ( defaultRender
                   langs
                   [ihamlet|
-                #{party}_{MsgNewVolunteer $ renderUser user}
+                #{party} _{MsgNewVolunteer $ renderUser user}
               |]
               )
           )
@@ -714,7 +719,7 @@ allowVolunteer pool tuid = do
                 Just $
                   ik
                     [ [ ikb
-                          (forbidden <> tr langs MsgBan)
+                          (forbidden <> " " <> tr langs MsgBan)
                           ("ban_" <> showSqlKey tuid)
                       ]
                     ]
@@ -830,7 +835,7 @@ renderState (ScheduledSlotAwaitingConfirmation _) = hourglass
 renderState ScheduledSlotUnconfirmed = attention
 renderState ScheduledSlotConfirmed = allGood
 renderState ScheduledSlotFinished {} = finished
-renderState ScheduledSlotChecklistComplete {visitors} = finished <> "(" <> pack (show visitors) <> " visitors)"
+renderState ScheduledSlotChecklistComplete {visitors} = finished <> " (" <> pack (show visitors) <> " " <> people <> ")"
 
 type ScheduleList = [(Day, [(TelegramUser, TimeOfDay, TimeOfDay, ScheduledSlotState)])]
 
@@ -839,17 +844,17 @@ renderWorkingSchedule langs garage days =
   defaultRender
     langs
     [ihamlet|
-    #{calendar}<b>_{MsgWorkingScheduleFor $ renderGarage garage}</b>
+    #{calendar} <b>_{MsgWorkingScheduleFor $ renderGarage garage}</b>
     $forall (day, slots) <- days
       \
       \
       <b>#{showDay langs day}
       $forall (user, start, end, state) <- slots
         \
-        #{clock}#{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}: #{renderState state}
+        #{clock} #{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}: #{renderState state}
     \
     \
-    _{MsgLegend}: <span class="tg-spoiler">#{news}_{MsgLegendCreated}; #{hourglass}_{MsgLegendAwaitingConfirmation}; #{attention}_{MsgLegendUnconfirmed}; #{allGood}_{MsgLegendConfirmed}; #{finished}_{MsgLegendFinished}</span>
+    _{MsgLegend}: <span class="tg-spoiler">#{news}_{MsgLegendCreated}; #{hourglass}_{MsgLegendAwaitingConfirmation}; #{attention}_{MsgLegendUnconfirmed}; #{allGood}_{MsgLegendConfirmed}; #{finished}_{MsgLegendFinished}; #{people}_{MsgLegendVisitors}</span>
   |]
 
 getWorkingSchedule :: ConnectionPool -> Day -> GarageId -> ClientM ScheduleList
@@ -925,6 +930,7 @@ sendOpenDaySchedule pool weekStart garage days = do
               ( sendMessageRequest
                   (ChatId (fromIntegral uid))
                   ( news
+                      <> " "
                       <> tr langs (MsgNewScheduleFor $ renderGarage g)
                   )
               )
