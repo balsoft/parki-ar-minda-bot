@@ -28,6 +28,12 @@ allGood = "✅ "
 clock :: Text
 clock = "🕑 "
 
+hourglass :: Text
+hourglass = "⌛"
+
+finished :: Text
+finished = "🏁 "
+
 calendar :: Text
 calendar = "📅 "
 

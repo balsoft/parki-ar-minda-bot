@@ -805,12 +805,12 @@ getSubscriptions = do
   catMaybes <$> mapM get ids
 
 renderState :: ScheduledSlotState -> Text
-renderState ScheduledSlotCreated = news <> "Created"
-renderState (ScheduledSlotAwaitingConfirmation _) = clock <> "Awaiting Confirmation"
-renderState ScheduledSlotUnconfirmed = attention <> "Not Confirmed"
-renderState ScheduledSlotConfirmed = allGood <> "Confirmed"
-renderState ScheduledSlotFinished { } = allGood <> "Finished"
-renderState ScheduledSlotChecklistComplete { visitors } = allGood <> "Finished, " <> (pack $ show visitors) <> " visitors"
+renderState ScheduledSlotCreated = news
+renderState (ScheduledSlotAwaitingConfirmation _) = hourglass
+renderState ScheduledSlotUnconfirmed = attention
+renderState ScheduledSlotConfirmed = allGood
+renderState ScheduledSlotFinished { } = finished
+renderState ScheduledSlotChecklistComplete { visitors } = finished <> "(" <> (pack $ show visitors) <> " visitors)"
 
 renderWorkingSchedule :: [Lang] -> Garage -> [(Day, [(TelegramUser, TimeOfDay, TimeOfDay, ScheduledSlotState)])] -> Text
 renderWorkingSchedule langs garage days =
@@ -825,6 +825,9 @@ renderWorkingSchedule langs garage days =
       $forall (user, start, end, state) <- slots
         \
         #{clock}#{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}: #{renderState state}
+    \
+    \
+    Legend: <span class="tg-spoiler">#{news}Created; #{hourglass}Awaiting Confirmation; #{attention}Unconfirmed; #{allGood}Confirmed; #{finished}Finished</span>
   |]
 
 updateWorkingSchedule :: ConnectionPool -> Bool -> Day -> GarageId -> ClientM ()
