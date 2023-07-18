@@ -854,7 +854,7 @@ renderWorkingSchedule langs garage days =
         #{clock} #{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}: #{renderState state}
     \
     \
-    _{MsgLegend}: <span class="tg-spoiler">#{news}_{MsgLegendCreated} <b>/</b> #{hourglass}_{MsgLegendAwaitingConfirmation} <b>/</b> #{attention}_{MsgLegendUnconfirmed} <b>/</b> #{allGood}_{MsgLegendConfirmed} <b>/</b> #{finished}_{MsgLegendFinished} <b>/</b> #{people}_{MsgLegendVisitors}</span>
+    <i>_{MsgLegend}: <span class="tg-spoiler">#{news}_{MsgLegendCreated} <b>/</b> #{hourglass}_{MsgLegendAwaitingConfirmation} <b>/</b> #{attention}_{MsgLegendUnconfirmed} <b>/</b> #{allGood}_{MsgLegendConfirmed} <b>/</b> #{finished}_{MsgLegendFinished} <b>/</b> #{people}_{MsgLegendVisitors}</span>
   |]
 
 getWorkingSchedule :: ConnectionPool -> Day -> GarageId -> ClientM ScheduleList

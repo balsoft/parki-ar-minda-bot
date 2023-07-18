@@ -29,6 +29,7 @@ import Bot
 sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationRequests pool now = do
   let tomorrow = succ $ localDay now
+  tomorrow' <- runInPool pool $ selectList [OpenDayDate ==. tomorrow] []
   slotsConfirmationRequestNotSent <-
     runInPool pool $ do
       selectList [OpenDayDate ==. tomorrow] [] >>= \entities -> do
@@ -66,6 +67,7 @@ sendConfirmationRequests pool now = do
                     [ikb (tr langs MsgCantCome) ("cancel_" <> showSqlKey slotId)]
                   ]
           }
+  when (not $ null slotsConfirmationRequestNotSent) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendConfirmationReminders :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationReminders pool now = do
@@ -93,7 +95,7 @@ sendConfirmationReminders pool now = do
         )
           { sendMessageParseMode = Just HTML
           }
-  forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
+  when (not $ null slotsNotConfirmed) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
 
 notifyUnconfirmedSlots :: ConnectionPool -> LocalTime -> ClientM ()
 notifyUnconfirmedSlots pool now = do
@@ -136,7 +138,7 @@ notifyUnconfirmedSlots pool now = do
                       ]
                     ]
             }
-  forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
+  when (not $ null slotsNotConfirmed) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendLastReminders :: ConnectionPool -> LocalTime -> ClientM ()
 sendLastReminders pool now = do
@@ -198,7 +200,7 @@ sendChecklist pool now = do
             }
     runInPool pool $
       update slotId [ScheduledSlotState =. ScheduledSlotFinished (fromIntegral mid)]
-  forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
+  when (not $ null slotsFinished) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendOpenDayReminder :: ConnectionPool -> LocalTime -> ClientM ()
 sendOpenDayReminder pool now = do
