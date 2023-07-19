@@ -3,10 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -Wno-unused-record-wildcards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Bot
   ( bot,
@@ -244,7 +244,7 @@ existingSlotsStep langs pool chat@ChatChannel {..} msgId volunteer day = do
                   ]
                   | (Entity _ ScheduledSlot {..}, name) <- slots
                 ]
-                  ++ [ [ ( [ihamlet|#{new} _{MsgNewAppointment}|],
+                  ++ [ [ ([ihamlet|#{new} _{MsgNewAppointment}|],
                            "new_" <> showSqlKey day
                          )
                        ]
@@ -463,14 +463,17 @@ deleteUser pool vid = do
 askDeleteUser ::
   [Lang] -> ChatChannel -> VolunteerId -> ConnectionPool -> ClientM ()
 askDeleteUser langs chat@ChatChannel {channelChatId} volunteer pool = do
-  void $
-    send channelChatId langs (attention +-+ MsgAreYouSure)
-  untilRight (getNewMessage chat) (const $ pure ()) >>= \case
-    Message {messageText = Just txt}
-      | txt == MsgIAmSure |-> langs -> do
-          deleteUser pool volunteer
-          void $ send channelChatId langs (allGood +-+ MsgDeleted)
-    _ -> void $ send channelChatId langs (attention +-+ MsgNotDeleting)
+  Just Volunteer {volunteerUser} <- runInPool pool $ get volunteer
+  Just TelegramUser {telegramUserUserId} <- runInPool pool $ get volunteerUser
+  when (channelChatId == ChatId (fromIntegral telegramUserUserId)) $ do
+    void $
+      send channelChatId langs (attention +-+ MsgAreYouSure)
+    untilRight (getNewMessage chat) (const $ pure ()) >>= \case
+      Message {messageText = Just txt}
+        | txt == MsgIAmSure |-> langs -> do
+            deleteUser pool volunteer
+            void $ send channelChatId langs (allGood +-+ MsgDeleted)
+      _ -> void $ send channelChatId langs (attention +-+ MsgNotDeleting)
 
 cancelSlot :: ConnectionPool -> ScheduledSlotId -> ClientM ()
 cancelSlot pool slotId = do
@@ -518,42 +521,46 @@ askCancelSlot ::
   ClientM Bool
 askCancelSlot langs pool ChatChannel {..} originalMsgId slotId = do
   Just slot <- runInPool pool $ get slotId
-  slotDesc <- runInPool pool $ getSlotDesc slot
-  msg <-
-    responseResult
-      <$> sendWithButtons
-        channelChatId
-        langs
-        [ihamlet|
-              #{attention} _{MsgSureCancel}
-              ^{slotDesc}
-            |]
-        [[(__ MsgYesCancel, "cancel"), (__ MsgNoIWillCome, "will_come")]]
+  Just volunteer <- runInPool pool $ get (scheduledSlotUser slot)
+  Just TelegramUser {telegramUserUserId} <- runInPool pool $ get (volunteerUser volunteer)
+  if channelChatId == ChatId (fromIntegral telegramUserUserId) then do
+    slotDesc <- runInPool pool $ getSlotDesc slot
+    msg <-
+      responseResult
+        <$> sendWithButtons
+          channelChatId
+          langs
+          [ihamlet|
+                #{attention} _{MsgSureCancel}
+                ^{slotDesc}
+              |]
+          [[(__ MsgYesCancel, "cancel"), (__ MsgNoIWillCome, "will_come")]]
 
-  doCancel <-
-    ignoreUntilRight
-      ( getUpdate channelUpdateChannel >>= \case
-          SomeNewCallbackQuery
-            q@CallbackQuery
-              { callbackQueryData = Just txt,
-                callbackQueryMessage = Just msg'
-              }
-              | messageMessageId msg' == messageMessageId msg -> do
-                  void $
-                    answerCallbackQuery
-                      (answerCallbackQueryRequest (callbackQueryId q))
-                  pure $
-                    case txt of
-                      "will_come" -> Right False
-                      "cancel" -> Right True
-                      _ -> Left ()
-          _ -> pure (Left ())
-      )
-  void $ deleteMessage channelChatId (messageMessageId msg)
-  when doCancel $ do
-    flip catchError (liftIO . print) $ void $ deleteMessage channelChatId originalMsgId
-    cancelSlot pool slotId
-  pure doCancel
+    doCancel <-
+      ignoreUntilRight
+        ( getUpdate channelUpdateChannel >>= \case
+            SomeNewCallbackQuery
+              q@CallbackQuery
+                { callbackQueryData = Just txt,
+                  callbackQueryMessage = Just msg'
+                }
+                | messageMessageId msg' == messageMessageId msg -> do
+                    void $
+                      answerCallbackQuery
+                        (answerCallbackQueryRequest (callbackQueryId q))
+                    pure $
+                      case txt of
+                        "will_come" -> Right False
+                        "cancel" -> Right True
+                        _ -> Left ()
+            _ -> pure (Left ())
+        )
+    void $ deleteMessage channelChatId (messageMessageId msg)
+    when doCancel $ do
+      flip catchError (liftIO . print) $ void $ deleteMessage channelChatId originalMsgId
+      cancelSlot pool slotId
+    pure doCancel
+  else pure False
 
 confirmSlot ::
   [Lang] ->
@@ -638,11 +645,10 @@ banVolunteer pool tuid = do
   deleteCallbackQueryMessages pool ("ban_" <> showSqlKey tuid)
   forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
     let langs = maybeToList lang
-    void $
-      send
-        (ChatId (fromIntegral auid))
-        langs
-        [ihamlet|#{allGood} _{MsgVolunteerRemoved (renderUser user)}|]
+    void $ send
+      (ChatId (fromIntegral auid))
+      langs
+      [ihamlet|#{allGood} _{MsgVolunteerRemoved (renderUser user)}|]
 
 checkbox :: Bool -> Text
 checkbox False = "☐"
@@ -794,6 +800,7 @@ unlockSchedule _langs pool ChatChannel {..} day' gid = do
   let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
   days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
   sendOpenDaySchedule pool day gid days
+
 
 knownLangs :: [Text]
 knownLangs = ["en", "ru"]
