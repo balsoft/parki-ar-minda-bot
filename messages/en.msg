@@ -13,7 +13,7 @@ Greet: Hello! This is a bot for eco-volunteers to sign up for duty in one of <b>
 Volunteer: Congratulations, you are now a volunteer. You can now /subscribe to notifications about scheduling starts and /signup for duty.
 Subscribed: You have been successfully subscribed to new notifications. Send /unsubscribe to unsubscribe.
 Unsubscribed: You have been unsubscribed from new notifications. If you want to subscribe again, send /subscribe .
-AreYouSure: ⚠ Are you sure? This will delete all information about you, including all the time slots you're currently allocated to. Type in <code>Yes, I am sure</code> to continue.
+AreYouSure: Are you sure? This will delete all information about you, including all the time slots you're currently allocated to. Type in <code>Yes, I am sure</code> to continue.
 IAmSure: Yes, I am sure
 Deleted: Your information has been successfully deleted. Press /start if you wish to start volunteering again.
 NotDeleting: You did not type <code>Yes, I am sure</code>. Not deleting the chat.
@@ -66,11 +66,10 @@ Lock: Lock
 GarageOpenDays garage@Html: Which day should the #{garage} garage be open?
 WorkingScheduleFor garage@Html: Working schedule for #{garage}:
 NewScheduleFor garage@Html: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
-SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.
+SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect. Please check the new schedule.
 SlotStillNotConfirmed: <b>Volunteer still has not confirmed this time slot</b>:
 SlotCancel: Cancel this slot
-SetOpenDaysReminder start@Text: It's time to set the open days for garages for the next week (starting #{start})!
-SetOpenDays garageName@Text: Set the open days for #{garageName}
+SetOpenDaysReminder start@BotMessage: It's time to set the open days for garages for the next week (starting #{_tr "en" start})!
 VolunteerRequest user@Html: #{user} wants to become a volunteer
 Allow: Allow
 Decline: Decline
@@ -88,7 +87,7 @@ LegendVisitors: Visitors
 
 SlotFinished: Looks like your duty is <b>coming to an end</b>. Thank you for your help! Hopefully, it went well.
 
-Checklist: <b>Please, make sure to complete all the post-duty checklist items</b>:
+Checklist: Please, make sure to complete all the post-duty checklist items:
 
 CheckBags: Tie bags if appropriate, place them in the right locations;
 TakeTrashOut: Take out non-recycleable waste, make sure the garage is <b>clean</b>;
@@ -101,7 +100,7 @@ Ack: Acknowledged, thanks!
 
 Reported visitors@Int: There were #{visitors} visitors during this duty:
 
-ScheduleIntro garage@Html: Schedule for #{garage}:
+ScheduleIntro garage@Html: Final schedule for #{garage}:
 
 Monday: Monday
 Tuesday: Tuesday
@@ -124,4 +123,4 @@ October: October
 November: November
 December: December
 
-Date month@Text day@Text dayOfWeek@Text: #{dayOfWeek}, #{month} #{day}
+Date month@BotMessage day@Int dayOfWeek@BotMessage: #{_tr "en" dayOfWeek}, #{_tr "en" month} #{day}

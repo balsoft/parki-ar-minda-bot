@@ -1,0 +1,9 @@
+<b>#{calendar} _{MsgScheduleIntro (renderGarage g)}
+$forall (day, times) <- Data.List.sort s
+  $if not (null times)
+    \
+    \
+    <b>_{showDate day}
+    $forall (start, end) <- mergeIntervals times
+      \
+      #{showHourMinutes start}-#{showHourMinutes end}

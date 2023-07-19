@@ -1,0 +1,8 @@
+$if not (null mySlots)
+  \
+  \
+  #{diamond} _{MsgOtherDutiesThisDay}
+  $forall slot <- mySlots
+    \
+    \
+    ^{slot}

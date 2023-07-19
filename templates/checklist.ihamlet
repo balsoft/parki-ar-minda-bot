@@ -1,0 +1,7 @@
+_{MsgSlotFinished}
+\
+\
+<b>_{MsgChecklist}
+$forall item <- [MsgCheckBags, MsgTakeTrashOut, MsgCloseTheDoor, MsgReturnKey, MsgReportVisitors]
+  \
+  • _{item}

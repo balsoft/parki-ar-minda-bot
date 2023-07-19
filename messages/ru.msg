@@ -67,11 +67,10 @@ Lock: Заморозить
 GarageOpenDays garage@Html: В какие дни гараж #{garage} должен быть открыть?
 WorkingScheduleFor garage@Html: Рабочее расписание для #{garage}:
 NewScheduleFor garage@Html: Новое расписание для #{garage}! Вы можете использовать /signup или нажать на одну из кнопок ниже.
-SlotCancelled: Эта запись была <b>отменена</b>, а значит что финальное расписание теперь неверно. Используйте /lock чтобы сгенерировать новое.
+SlotCancelled: Эта запись была <b>отменена</b>, а значит что финальное расписание теперь неверно.
 SlotStillNotConfirmed: <b>Волонтёр всё ещё не подтвердил эту запись</b>:
 SlotCancel: Отменить эту запись
-SetOpenDaysReminder start@Text: Пришло время выбрать, в какие дни гаражи будут открыты на следующей недел (начинающейся с #{start})!
-SetOpenDays garageName@Text: Выбрать дни работы #{garageName}
+SetOpenDaysReminder start@BotMessage: Пришло время выбрать, в какие дни гаражи будут открыты на следующей недел (начинающейся с #{_tr "ru" start})!
 VolunteerRequest user@Html: #{user} хочет стать волонтёром
 Allow: Разрешить
 Decline: Отклонить
@@ -81,7 +80,7 @@ VolunteerRemoved user@Html: #{user} был удалён из списка вол
 
 SlotFinished: Похоже, ваше дежурство <b>подходит к концу</b>. Спасибо за вашу помощь! Надеемся, всё прошло хорошо.
 
-Checklist: <b>Пожалуйста, убедитесь, что вы выполнили все пункты списка</b>:
+Checklist: Пожалуйста, убедитесь, что вы выполнили все пункты списка:
 
 CheckBags: Завязать мешки (если нужно), убедиться, что они в нужных местах;
 TakeTrashOut: Вынести неперерабатываемый мусор, убедиться, что гараж <b>чист</b>;
@@ -102,7 +101,7 @@ LegendVisitors: Посетители
 
 Reported visitors@Int: #{visitors} человек пришло на это дежурство:
 
-ScheduleIntro garage@Html: Расписание гаража в #{garage}:
+ScheduleIntro garage@Html: Окончательное расписание гаража в #{garage}:
 
 Monday: Понедельник
 Tuesday: Вторник
@@ -125,4 +124,4 @@ October: Октября
 November: Ноября
 December: Декабря
 
-Date month@Text day@Text dayOfWeek@Text: #{dayOfWeek}, #{day} #{month}
+Date month@BotMessage day@Int dayOfWeek@BotMessage: #{_tr "ru" dayOfWeek}, #{day} #{_tr "ru" month}

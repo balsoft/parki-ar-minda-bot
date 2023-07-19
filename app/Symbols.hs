@@ -19,6 +19,12 @@ hello = "👋"
 party :: Text
 party = "🥳"
 
+locked :: Text
+locked = "🔒"
+
+unlocked :: Text
+unlocked = "🔓"
+
 attention :: Text
 attention = "⚠"
 
@@ -48,6 +54,9 @@ bad = "❌"
 
 news :: Text
 news = "⚡"
+
+new :: Text
+new = "➕"
 
 info :: Text
 info = "ⓘ "

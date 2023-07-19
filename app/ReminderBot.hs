@@ -2,17 +2,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module ReminderBot
   ( reminderBot,
   )
 where
 
-import Control.Monad (forM_, void, when)
-import Control.Monad.IO.Unlift (MonadIO (liftIO))
+import Control.Monad.Except
 import Data.Maybe (maybeToList)
 import Data.Text (pack)
-import qualified Data.Text as T
 import Data.Time
 import Database.Persist
 import Database.Persist.Sqlite (ConnectionPool)
@@ -24,7 +23,6 @@ import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Hamlet
 import Util
-import Bot
 
 sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationRequests pool now = do
@@ -36,38 +34,27 @@ sendConfirmationRequests pool now = do
         selectList
           [ScheduledSlotDay <-. fmap entityKey entities, ScheduledSlotState ==. ScheduledSlotCreated]
           []
-  forM_ slotsConfirmationRequestNotSent $ \(Entity slotId slot@ScheduledSlot {..}) -> do
+  forM_ slotsConfirmationRequestNotSent $ \(Entity slotId slot@ScheduledSlot {..}) -> ignoreError $ do
     runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotAwaitingConfirmation False]
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
         get volunteerUser
     let langs = maybeToList telegramUserLang
-    slotDesc <- runInPool pool $ getSlotDesc langs slot
+    slotDesc <- runInPool pool $ getSlotDesc slot
     void $
-      sendMessage
-        ( sendMessageRequest
-            (ChatId (fromIntegral telegramUserUserId))
-            ( defaultRender
-                langs
-                [ihamlet|
-                      _{MsgConfirmTomorrow}
-                      #{slotDesc}
-                    |]
-            )
-        )
-          { sendMessageParseMode = Just HTML,
-            sendMessageReplyMarkup =
-              Just $
-                ik
-                  [ [ ikb
-                        (allGood <> tr langs MsgYesIWillCome)
-                        ("confirm_" <> showSqlKey slotId)
-                    ],
-                    [ikb (tr langs MsgCantCome) ("cancel_" <> showSqlKey slotId)]
-                  ]
-          }
-  when (not $ null slotsConfirmationRequestNotSent) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
+      sendWithButtons
+        (ChatId (fromIntegral telegramUserUserId))
+        langs
+        [ihamlet|
+            _{MsgConfirmTomorrow}
+            ^{slotDesc}
+          |]
+        [ [ (__ MsgYesIWillCome, "confirm_" <> showSqlKey slotId)
+          ],
+          [(__ MsgCantCome, "cancel_" <> showSqlKey slotId)]
+        ]
+  unless (null slotsConfirmationRequestNotSent) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendConfirmationReminders :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationReminders pool now = do
@@ -80,7 +67,7 @@ sendConfirmationReminders pool now = do
           ScheduledSlotState ==. ScheduledSlotAwaitingConfirmation False
         ]
         []
-  forM_ slotsNotConfirmed $ \(Entity slotId ScheduledSlot {..}) -> do
+  forM_ slotsNotConfirmed $ \(Entity slotId ScheduledSlot {..}) -> ignoreError $ do
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
@@ -88,14 +75,11 @@ sendConfirmationReminders pool now = do
         get volunteerUser
     let langs = maybeToList telegramUserLang
     void $
-      sendMessage
-        ( sendMessageRequest
-            (ChatId (fromIntegral telegramUserUserId))
-            (attention <> tr langs MsgConfirmReminder)
-        )
-          { sendMessageParseMode = Just HTML
-          }
-  when (not $ null slotsNotConfirmed) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
+      send
+        (ChatId (fromIntegral telegramUserUserId))
+        langs
+        [ihamlet|#{attention} _{MsgConfirmReminder}|]
+  unless (null slotsNotConfirmed) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
 
 notifyUnconfirmedSlots :: ConnectionPool -> LocalTime -> ClientM ()
 notifyUnconfirmedSlots pool now = do
@@ -111,34 +95,21 @@ notifyUnconfirmedSlots pool now = do
         ]
         []
   admins <- runInPool pool getAdmins
-  forM_ slotsNotConfirmed $ \(Entity slotId slot) -> do
-    forM_ admins $ \(TelegramUser auid lang _ _) -> do
+  forM_ slotsNotConfirmed $ \(Entity slotId slot) -> ignoreError $ do
+    forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
       let langs = maybeToList lang
-      slotFullDesc <- runInPool pool (getSlotFullDesc langs slot)
+      slotFullDesc <- runInPool pool (getSlotFullDesc slot)
       runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotUnconfirmed]
       void $
-        sendMessage
-          ( sendMessageRequest
-              (ChatId (fromIntegral auid))
-              ( defaultRender
-                  langs
-                  [ihamlet|
-                #{attention} _{MsgSlotStillNotConfirmed}
-                #{slotFullDesc}
-              |]
-              )
-          )
-            { sendMessageParseMode = Just HTML,
-              sendMessageReplyMarkup =
-                Just $
-                  ik
-                    [ [ ikb
-                          (tr langs MsgSlotCancel)
-                          ("admin_cancel_" <> showSqlKey slotId)
-                      ]
-                    ]
-            }
-  when (not $ null slotsNotConfirmed) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
+        sendWithButtons
+          (ChatId (fromIntegral auid))
+          langs
+          [ihamlet|
+            #{attention} _{MsgSlotStillNotConfirmed}
+            ^{slotFullDesc}
+          |]
+          [[(__ MsgSlotCancel, "admin_cancel_" <> showSqlKey slotId)]]
+  unless (null slotsNotConfirmed) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendLastReminders :: ConnectionPool -> LocalTime -> ClientM ()
 sendLastReminders pool now = do
@@ -154,7 +125,7 @@ sendLastReminders pool now = do
               ScheduledSlotReminderSent ==. False
             ]
             []
-  forM_ slotsComingUp $ \(Entity slotId ScheduledSlot {..}) -> do
+  forM_ slotsComingUp $ \(Entity slotId ScheduledSlot {..}) -> ignoreError $ do
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
@@ -162,13 +133,10 @@ sendLastReminders pool now = do
         get volunteerUser
     let langs = maybeToList telegramUserLang
     void $
-      sendMessage
-        ( sendMessageRequest
-            (ChatId (fromIntegral telegramUserUserId))
-            (tr langs MsgLastReminder)
-        )
-          { sendMessageParseMode = Just HTML
-          }
+      send
+        (ChatId (fromIntegral telegramUserUserId))
+        langs
+        (__ MsgLastReminder)
 
 sendChecklist :: ConnectionPool -> LocalTime -> ClientM ()
 sendChecklist pool now = do
@@ -182,7 +150,7 @@ sendChecklist pool now = do
           ScheduledSlotState ==. ScheduledSlotConfirmed
         ]
         []
-  forM_ slotsFinished $ \(Entity slotId ScheduledSlot {..}) -> do
+  forM_ slotsFinished $ \(Entity slotId ScheduledSlot {..}) -> ignoreError $ do
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
@@ -193,14 +161,14 @@ sendChecklist pool now = do
         <$> sendMessage
           ( sendMessageRequest
               (ChatId (fromIntegral telegramUserUserId))
-              (tr langs MsgSlotFinished <> "\n\n" <> tr langs MsgChecklist <> "\n\n" <> T.intercalate "\n" (fmap (const "• " <> tr langs) [MsgCheckBags, MsgTakeTrashOut, MsgCloseTheDoor, MsgReturnKey, MsgReportVisitors]))
+              (defaultRender langs $(ihamletFile "templates/checklist.ihamlet"))
           )
             { sendMessageParseMode = Just HTML,
-              sendMessageReplyMarkup = Just $ SomeForceReply $ ForceReply True (Just $ tr langs MsgNumber) Nothing
+              sendMessageReplyMarkup = Just $ SomeForceReply $ ForceReply True (Just $ MsgNumber |-> langs) Nothing
             }
     runInPool pool $
       update slotId [ScheduledSlotState =. ScheduledSlotFinished (fromIntegral mid)]
-  when (not $ null slotsFinished) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
+  unless (null slotsFinished) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
 
 sendOpenDayReminder :: ConnectionPool -> LocalTime -> ClientM ()
 sendOpenDayReminder pool now = do
@@ -211,19 +179,17 @@ sendOpenDayReminder pool now = do
       | openDayReminderSentOn == today -> pure ()
     _ -> do
       admins <- runInPool pool getAdmins
-      forM_ admins $ \(TelegramUser auid lang _ _) -> do
+      forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
         let langs = maybeToList lang
         void $ runInPool pool $ insert $ OpenDayReminder today
         void $
-          sendMessage
-            ( sendMessageRequest
-                (ChatId (fromIntegral auid))
-                (news <> tr langs (MsgSetOpenDaysReminder (showDay langs (nextWeekStart today))))
-            )
-              { sendMessageParseMode = Just HTML,
-                sendMessageReplyMarkup =
-                  Just $ ik [[ikb (tr langs (MsgSetOpenDays $ renderGarageText garage)) ("admin_setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))] | (Entity gid garage) <- garages]
-              }
+          sendWithButtons
+            (ChatId (fromIntegral auid))
+            langs
+            [ihamlet|#{news} _{MsgSetOpenDaysReminder (showDate (nextWeekStart today))}|]
+            [ [(__ $ renderGarageText garage, "admin_setopendays_" <> showSqlKey gid <> "_" <> pack (showGregorian (nextWeekStart today)))]
+              | (Entity gid garage) <- garages
+            ]
 
 reminderBot :: ConnectionPool -> ClientM ()
 reminderBot pool = do
