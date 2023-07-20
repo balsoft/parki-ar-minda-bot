@@ -125,18 +125,22 @@ sendLastReminders pool now = do
               ScheduledSlotReminderSent ==. False
             ]
             []
-  forM_ slotsComingUp $ \(Entity slotId ScheduledSlot {..}) -> ignoreError $ do
+  forM_ slotsComingUp $ \(Entity slotId slot@ScheduledSlot {..}) -> ignoreError $ do
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
         update slotId [ScheduledSlotReminderSent =. True]
         get volunteerUser
+    slotDesc <- runInPool pool $ getSlotDesc slot
     let langs = maybeToList telegramUserLang
     void $
       send
         (ChatId (fromIntegral telegramUserUserId))
         langs
-        (__ MsgLastReminder)
+        [ihamlet|
+          _{MsgLastReminder}
+          ^{slotDesc}
+        |]
 
 sendChecklist :: ConnectionPool -> LocalTime -> ClientM ()
 sendChecklist pool now = do
