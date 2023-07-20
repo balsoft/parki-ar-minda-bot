@@ -1,8 +1,9 @@
 #{calendar} <b>_{MsgWorkingScheduleFor $ renderGarage garage}</b>
+\
 $if isLocked
-  #{locked}
+  #{locked} _{MsgLocked}
 $else
-  #{unlocked}
+  #{unlocked} _{MsgUnlocked}
 $forall (day, slots) <- days
   \
   \

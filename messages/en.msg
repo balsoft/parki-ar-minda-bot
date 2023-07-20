@@ -59,9 +59,9 @@ AnotherGarage: Sign up for another garage
 SameGarage: Sign up for the same garage
 CancelCreate: Cancel the other duties and create this one
 
-Locked garage@Html: The schedule for #{garage} has been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedule.
+Locked: This schedule has been locked, meaning no new signups will happen. You can press the "Unlock" button to unlock the schedule.
 Unlock: Unlock
-Unlocked garage@Html: The schedule for #{garage} has been unlocked. Use /lock to lock it back and generate the final schedule.
+Unlocked: This schedule is unlocked. You can press the "Lock" button to lock this schedule before publishing it, or use /lock to lock all schedules for this week.
 Lock: Lock
 GarageOpenDays garage@Html: Which day should the #{garage} garage be open?
 WorkingScheduleFor garage@Html: Working schedule for #{garage}:
