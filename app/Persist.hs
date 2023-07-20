@@ -57,13 +57,20 @@ instance PersistFieldSql DayOfWeek where
 
 -- | Possible states of a scheduled slot
 data ScheduledSlotState
-  = ScheduledSlotCreated -- ^ Scheduled slot created, it is still too early for a confirmation
-  | ScheduledSlotAwaitingConfirmation -- ^ A confirmation request has been sent, but not responded to
-      Bool -- ^ Whether the confirmation reminder has been sent
-  | ScheduledSlotUnconfirmed -- ^ Slot has not been confirmed on time
-  | ScheduledSlotConfirmed -- ^ Slot has been confirmed
-  | ScheduledSlotFinished { checklistMsg :: Int } -- ^ Duty time has finished
-  | ScheduledSlotChecklistComplete { visitors :: Int } -- ^ After-duty checklist is complete
+  = -- | Scheduled slot created, it is still too early for a confirmation
+    ScheduledSlotCreated
+  | -- | A confirmation request has been sent, but not responded to
+    ScheduledSlotAwaitingConfirmation
+      Bool
+      -- ^ Whether the confirmation reminder has been sent
+  | -- | Slot has not been confirmed on time
+    ScheduledSlotUnconfirmed
+  | -- | Slot has been confirmed
+    ScheduledSlotConfirmed
+  | -- | Duty time has finished
+    ScheduledSlotFinished {checklistMsg :: Int}
+  | -- | After-duty checklist is complete
+    ScheduledSlotChecklistComplete {visitors :: Int}
   deriving (Show, Read)
 
 instance PersistField ScheduledSlotState where
@@ -146,3 +153,4 @@ readSqlKey = toSqlKey . read . unpack
 
 migrate :: MonadIO m => ConnectionPool -> m ()
 migrate pool = runInPool pool $ runMigration migrateAll
+

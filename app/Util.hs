@@ -13,7 +13,7 @@ import Control.Monad.Except
 import Control.Monad.Reader (ReaderT)
 import Data.Functor ((<&>))
 import qualified Data.List
-import Data.Maybe (catMaybes, maybeToList)
+import Data.Maybe (catMaybes, maybeToList, fromMaybe)
 import Data.Text (Text, pack, unpack)
 import Data.Text.Lazy (toStrict)
 import Data.Time (Day, TimeOfDay, dayOfWeek, showGregorian)
@@ -314,3 +314,38 @@ updateWorkingScheduleForDay pool recreate dayId = do
 
 makeButtons :: [Lang] -> [[(IHamlet, Text)]] -> SomeReplyMarkup
 makeButtons langs grid = ik (fmap (\(text, callback) -> ikb (defaultRender langs text) callback) <$> grid)
+
+-- | Flatten all slots which are completed
+flattenSlots ::
+  MonadIO m =>
+  ConnectionPool ->
+  m
+    [ ( Text, -- | Name of the garage
+        Text, -- | Date of the slot
+        Text, -- | Starting time
+        Text, -- | End time
+        Text, -- | Volunteer's name
+        Text, -- | Volunteer's handle
+        Text, -- | Slot state
+        Text  -- | The amount of visitors (if available)
+      )
+    ]
+flattenSlots pool = runInPool pool $ do
+  slots <- selectList [] []
+  forM slots $ \(Entity _ ScheduledSlot {..}) -> do
+    get scheduledSlotDay >>= \case
+      Nothing -> pure (dm, dm, dm, dm, dm, dm, dm, dm)
+      Just (OpenDay {openDayGarage, openDayDate}) -> do
+        Just (Garage {garageName}) <- get openDayGarage
+        (fullName, userName) <- get scheduledSlotUser >>= \case
+            Nothing -> pure (dm, dm)
+            Just (Volunteer {volunteerUser}) ->
+              get volunteerUser >>= \case
+                Nothing -> pure (dm, dm)
+                Just (TelegramUser {telegramUserFullName, telegramUserUsername}) -> pure (telegramUserFullName, fromMaybe "" telegramUserUsername)
+        let visitors = case scheduledSlotState of
+              (ScheduledSlotChecklistComplete v) -> Just v
+              _ -> Nothing
+        pure (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderState scheduledSlotState, pack $ maybe "" show visitors)
+
+  where dm = "<deleted>"

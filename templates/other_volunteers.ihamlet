@@ -1,0 +1,8 @@
+$if not (null others)
+  \
+  \
+  #{people} _{MsgOtherVolunteers}
+  $forall (Entity _ ScheduledSlot {scheduledSlotStartTime, scheduledSlotEndTime}, v) <- others
+    \
+    #{v}: #{showHourMinutes scheduledSlotStartTime}—#{showHourMinutes scheduledSlotEndTime}
+$else

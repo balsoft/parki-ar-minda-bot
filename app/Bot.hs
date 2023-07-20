@@ -38,6 +38,10 @@ import Telegram.Bot.Monadic
 import Text.Hamlet (ihamlet, ihamletFile)
 import Text.Shakespeare.I18N (Lang)
 import Util
+import Data.Csv
+import System.IO.Temp
+import qualified Data.ByteString.Lazy as BS
+import System.Directory (removeFile)
 
 insertCallbackQueryMessage :: ConnectionPool -> Response Message -> ClientM (Response Message)
 insertCallbackQueryMessage pool r@(Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}, messageReplyMarkup = Just (InlineKeyboardMarkup buttons)}}) = runInPool pool $ do
@@ -319,17 +323,7 @@ askCreateStep langs pool chat@ChatChannel {..} msgId volunteer day startTime end
           <&> filter (\(Entity _ ScheduledSlot {..}) -> timesIntersect (scheduledSlotStartTime, scheduledSlotEndTime) (startTime, endTime))
       mapM (getSlotDesc . entityVal) (concat conflicts)
   others <- runInPool pool $ othersSlots day volunteer
-  let othersMessage =
-        [ihamlet|
-    $if not (null others)
-      \
-      \
-      #{people} _{MsgOtherVolunteers}
-      $forall (Entity _ ScheduledSlot {scheduledSlotStartTime, scheduledSlotEndTime}, v) <- others
-        \
-        #{v}: #{showHourMinutes scheduledSlotStartTime}—#{showHourMinutes scheduledSlotEndTime}
-    $else
-  |]
+  let othersMessage = $(ihamletFile "templates/other_volunteers.ihamlet")
   Just OpenDay {openDayGarage} <- runInPool pool $ get day
   mySlots <- mySlotsMsg pool day volunteer
   let extraButtons =
@@ -819,7 +813,8 @@ adminCommands =
   [ ("setopendays", MsgCommandSetOpenDays),
     ("lock", MsgCommandLock),
     ("workingschedule", MsgCommandWorkingSchedule),
-    ("workingschedulethisweek", MsgCommandWorkingScheduleThisWeek)
+    ("workingschedulethisweek", MsgCommandWorkingScheduleThisWeek),
+    ("report", MsgCommandReport)
   ]
 
 setCommands :: [(Text, BotMessage)] -> ChatChannel -> ClientM ()
@@ -890,6 +885,13 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
                 Just "/workingschedulethisweek" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
                   runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (thisWeekStart today) . entityKey)
+                  pure True
+                Just "/report" -> do
+                  slots <- flattenSlots pool
+                  file <- liftIO $ emptySystemTempFile "report.csv"
+                  liftIO $ BS.writeFile file $ encode slots
+                  _ <- sendDocument (toSendDocument (SomeChatId channelChatId) $ DocumentFile file "application/csv")
+                  liftIO $ removeFile file
                   pure True
                 ((>>= stripPrefix "/cancel_") -> Just t) -> cancelSlot pool (readSqlKey t) $> True
                 _ -> pure False

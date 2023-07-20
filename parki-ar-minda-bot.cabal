@@ -79,6 +79,10 @@ executable parki-ar-minda-bot
     , unliftio-core
     , blaze-markup
     , blaze-html
+    , cassava
+    , temporary
+    , bytestring
+    , directory
 
   -- , shakespeare-i18n
   -- Directories containing source files.
