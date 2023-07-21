@@ -210,8 +210,8 @@ type WorkingScheduleList = [(Day, [(TelegramUser, TimeOfDay, TimeOfDay, Schedule
 
 type ScheduleList = [(Day, [(TimeOfDay, TimeOfDay)])]
 
-renderWorkingSchedule :: Garage -> Bool -> WorkingScheduleList -> ScheduleList -> IHamlet
-renderWorkingSchedule garage isLocked days schedule = $(ihamletFile "templates/working_schedule.ihamlet")
+renderWorkingSchedule :: Garage -> Bool -> Bool -> WorkingScheduleList -> ScheduleList -> IHamlet
+renderWorkingSchedule garage isLocked isAdmin days schedule = $(ihamletFile "templates/working_schedule.ihamlet")
 
 getWeek :: ConnectionPool -> Day -> GarageId -> ClientM [Entity OpenDay]
 getWeek pool weekStart garage = do
@@ -271,7 +271,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
   forM_ admins $ \(Just (TelegramUser auid lang _ _)) -> do
     liftIO $ threadDelay 100000 -- Telegram rate limits
     let langs = maybeToList lang
-    scheduleIHamlet <- renderWorkingSchedule g isLocked <$> getWorkingSchedule pool weekStart garage <*> getSchedule pool weekStart garage
+    scheduleIHamlet <- renderWorkingSchedule g isLocked True <$> getWorkingSchedule pool weekStart garage <*> getSchedule pool weekStart garage
     let t = defaultRender langs scheduleIHamlet
     messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. s, CallbackQueryMultiChatChatId ==. auid] []
     let buttons =

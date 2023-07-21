@@ -1,9 +1,10 @@
 #{calendar} <b>_{MsgWorkingScheduleFor $ renderGarage garage}</b>
 \
-$if isLocked
-  #{locked} _{MsgLocked}
-$else
-  #{unlocked} _{MsgUnlocked}
+$if isAdmin
+  $if isLocked
+    #{locked} _{MsgLocked}
+  $else
+    #{unlocked} _{MsgUnlocked}
 $forall (day, slots) <- days
   \
   \
@@ -15,5 +16,5 @@ $forall (day, slots) <- days
 \
 <i>_{MsgLegend}: <span class="tg-spoiler">#{news}_{MsgLegendCreated} <b>/</b> #{hourglass}_{MsgLegendAwaitingConfirmation} <b>/</b> #{attention}_{MsgLegendUnconfirmed} <b>/</b> #{allGood}_{MsgLegendConfirmed} <b>/</b> #{finished}_{MsgLegendFinished} <b>/</b> #{people}_{MsgLegendVisitors}</span>
 \
-$if isLocked
+$if isAdmin && isLocked
   ^{renderSchedule garage schedule}

@@ -157,7 +157,7 @@ dayStep langs pool chat@ChatChannel {..} msgId volunteer garage = do
     else do
       Just g <- runInPool pool $ get garage
       let weekStart = thisWeekStart (openDayDate $ entityVal $ (\(a, _, _) -> a) $ head days)
-      schedule <- renderWorkingSchedule g False <$> getWorkingSchedule pool weekStart garage <*> pure []
+      schedule <- renderWorkingSchedule g False False <$> getWorkingSchedule pool weekStart garage <*> pure []
       let grid =
             [ [ ( [ihamlet|
                   _{showDate openDayDate}
