@@ -346,6 +346,13 @@ flattenSlots pool = runInPool pool $ do
         let visitors = case scheduledSlotState of
               (ScheduledSlotChecklistComplete v) -> Just v
               _ -> Nothing
-        pure (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderState scheduledSlotState, pack $ maybe "" show visitors)
+        pure (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderStateText scheduledSlotState, pack $ maybe "" show visitors)
 
   where dm = "<deleted>"
+renderStateText :: ScheduledSlotState -> Text
+renderStateText ScheduledSlotCreated = "Created"
+renderStateText ScheduledSlotAwaitingConfirmation {} = "Awaiting Confirmation"
+renderStateText ScheduledSlotUnconfirmed = "Unconfirmed"
+renderStateText ScheduledSlotConfirmed = "Confirmed"
+renderStateText ScheduledSlotFinished {} = "Finished"
+renderStateText ScheduledSlotChecklistComplete {} = "Completed"
