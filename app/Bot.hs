@@ -42,6 +42,8 @@ import Data.Csv
 import System.IO.Temp
 import qualified Data.ByteString.Lazy as BS
 import System.Directory (removeFile)
+import Control.Concurrent.Async (async)
+import Control.Monad.Reader.Class (ask)
 
 insertCallbackQueryMessage :: ConnectionPool -> Response Message -> ClientM (Response Message)
 insertCallbackQueryMessage pool r@(Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}, messageReplyMarkup = Just (InlineKeyboardMarkup buttons)}}) = runInPool pool $ do
@@ -707,7 +709,7 @@ sendOpenDaySchedule pool weekStart garage days = do
   subs <- runInPool pool (selectList [] [] >>= mapM (get . subscriptionUser . entityVal))
   Just g@Garage {..} <- runInPool pool $ get garage
   updateWorkingSchedule pool False weekStart garage `catchError` (liftIO . print)
-  forM_ subs $ \(Just (TelegramUser uid lang _ _)) -> ignoreError $ do
+  asyncClientM_ $ forM_ subs $ \(Just (TelegramUser uid lang _ _)) -> ignoreError $ do
     let langs = maybeToList lang
     catchError
       ( do
@@ -720,6 +722,7 @@ sendOpenDaySchedule pool weekStart garage days = do
                 | Entity did OpenDay {..} <- days
               ]
           void $ runInPool pool $ insert $ CallbackQueryMultiChat uid (fromIntegral mid) ("schedule_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
+          liftIO $ threadDelay 500000
       )
       (liftIO . hPrint stderr)
 
@@ -775,7 +778,7 @@ lockSchedule _langs pool ChatChannel {..} day' gid = do
   openDaysWithSlots <- getSchedule pool day gid
   subscriptions <- runInPool pool $ (selectList [] [] >>= mapM (get . subscriptionUser . entityVal))
   updateWorkingSchedule pool False day gid `catchError` (liftIO . print)
-  forM_ subscriptions $ \(Just (TelegramUser suid lang _ _)) -> ignoreError $ do
+  asyncClientM_ $ forM_ subscriptions $ \(Just (TelegramUser suid lang _ _)) -> ignoreError $ do
     let subscriptionLangs = maybeToList lang
     void $
       send

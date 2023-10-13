@@ -30,13 +30,15 @@ import Database.Persist.Sql
 import GHC.Conc (threadDelay)
 import I18N
 import Persist
-import Servant.Client (ClientM)
+import Servant.Client (ClientM, runClientM)
 import Symbols
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Hamlet
 import Text.Shakespeare.I18N (Lang)
 import Text.Shakespeare.Text (lt)
+import Control.Monad.Reader.Class (ask)
+import Control.Concurrent.Async
 
 instance MonadFail ClientM where
   fail e = liftIO (print e) >> liftIO (fail e)
@@ -356,3 +358,8 @@ renderStateText ScheduledSlotUnconfirmed = "Unconfirmed"
 renderStateText ScheduledSlotConfirmed = "Confirmed"
 renderStateText ScheduledSlotFinished {} = "Finished"
 renderStateText ScheduledSlotChecklistComplete {} = "Completed"
+
+asyncClientM_ :: ClientM () -> ClientM ()
+asyncClientM_ c = do
+  clientEnv <- ask
+  void $ liftIO $ async $ runClientM c clientEnv
