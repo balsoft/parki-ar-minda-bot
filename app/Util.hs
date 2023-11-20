@@ -227,8 +227,11 @@ mergeIntervals :: Ord a => [(a, a)] -> [(a, a)]
 mergeIntervals slots = go (Data.List.sort slots)
   where
     go [] = []
-    go [a] = [a]
-    go ((sa, ea) : (sb, eb) : xs) = if sb <= ea then go ((sa, eb) : xs) else (sa, ea) : go ((sb, eb) : xs)
+    go [a] = [a] -- Single interval
+    go ((sa, ea) : (sb, eb) : xs)
+      | eb <= ea = go ((sa, ea) : xs) -- Second is contain in first, merge and continue
+      | sb <= ea = go ((sa, eb) : xs) -- Intersecting, merge and continue
+      | otherwise = (sa, ea) : go ((sb, eb) : xs) -- Non-intersecting, keep the first interval as-is and continue
 
 renderSchedule :: Garage -> [(Day, [(TimeOfDay, TimeOfDay)])] -> IHamlet
 renderSchedule g s = $(ihamletFile "templates/schedule.ihamlet")
