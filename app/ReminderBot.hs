@@ -67,18 +67,27 @@ sendConfirmationReminders pool now = do
           ScheduledSlotState ==. ScheduledSlotAwaitingConfirmation False
         ]
         []
-  forM_ slotsNotConfirmed $ \(Entity slotId ScheduledSlot {..}) -> ignoreError $ do
+  forM_ slotsNotConfirmed $ \(Entity slotId slot@ScheduledSlot {..}) -> ignoreError $ do
     Just TelegramUser {..} <-
       runInPool pool $ do
         Just Volunteer {..} <- get scheduledSlotUser
         update slotId [ScheduledSlotState =. ScheduledSlotAwaitingConfirmation True]
         get volunteerUser
     let langs = maybeToList telegramUserLang
+    slotDesc <- runInPool pool $ getSlotDesc slot
     void $
-      send
+      sendWithButtons
         (ChatId (fromIntegral telegramUserUserId))
         langs
-        [ihamlet|#{attention} _{MsgConfirmReminder}|]
+        [ihamlet|
+          #{attention} _{MsgConfirmReminder}
+          ^slotDesc
+          |]
+        [ [ (__ MsgYesIWillCome, "confirm_" <> showSqlKey slotId)
+          ],
+          [(__ MsgCantCome, "cancel_" <> showSqlKey slotId)]
+        ]
+
   unless (null slotsNotConfirmed) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
 
 notifyUnconfirmedSlots :: ConnectionPool -> LocalTime -> ClientM ()

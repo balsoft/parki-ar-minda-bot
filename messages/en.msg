@@ -47,7 +47,7 @@ NoIWillCome: Never mind, I will come in
 YourSlotCancelled: Your slot has been <b>cancelled</b>
 ConfirmTomorrow: You are scheduled to be on duty tomorrow. Please confirm that you will come. If you fail to confirm this slot no later than <b>two hours</b> before the start of the slot, it will be <b>cancelled</b>:
 YesIWillCome: I will come
-ConfirmReminder: Looks like you still haven't confirmed your time slot for tomorrow. Please do so no later than <b>two hours</b> before the start of the slot using the confirm button in the message above.
+ConfirmReminder: Looks like you still haven't confirmed your time slot for tomorrow. Please do so no later than <b>two hours</b> before the start of the slot.
 ConfirmedShort: Your time slot has been <b>confirmed</b>.
 LastReminder: Friendly reminder: you have a slot coming up in <b>1 hour</b>.
 OtherDuties: It looks like you have other duties at this time. Please, choose another time or day, or cancel them.
