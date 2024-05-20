@@ -102,7 +102,7 @@ LegendVisitors: Посетители
 
 Reported visitors@Int: #{visitors} человек пришло на это дежурство:
 
-ScheduleIntro garage@Html: Окончательное расписание гаража в #{garage}:
+ScheduleIntro garage@Html: Расписание гаража в #{garage}:
 
 Monday: Понедельник
 Tuesday: Вторник

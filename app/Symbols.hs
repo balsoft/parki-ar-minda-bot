@@ -32,7 +32,7 @@ allGood :: Text
 allGood = "✅"
 
 clock :: Text
-clock = "🕑"
+clock = "⏰"
 
 hourglass :: Text
 hourglass = "⌛"
@@ -69,3 +69,6 @@ person = "👤"
 
 diamond :: Text
 diamond = "🔶"
+
+br :: Text
+br = "&#13;&#10;"

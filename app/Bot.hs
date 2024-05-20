@@ -775,16 +775,15 @@ lockSchedule _langs pool ChatChannel {..} day' gid = do
   let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
   runInPool pool $ do
     updateWhere selector [OpenDayAvailable =. False]
-  openDaysWithSlots <- getSchedule pool day gid
-  subscriptions <- runInPool pool $ (selectList [] [] >>= mapM (get . subscriptionUser . entityVal))
+  workingSchedule <- getWorkingSchedule pool day gid
+  subscriptions <- runInPool pool (selectList [] [] >>= mapM (get . adminUser . entityVal))
   updateWorkingSchedule pool False day gid `catchError` (liftIO . print)
-  asyncClientM_ $ forM_ subscriptions $ \(Just (TelegramUser suid lang _ _)) -> ignoreError $ do
-    let subscriptionLangs = maybeToList lang
+  asyncClientM_ $ forM_ subscriptions $ \(Just (TelegramUser suid _ _ _)) -> forM_ ["en", "ru"] $ \lang -> ignoreError $ do
     void $
       send
         (ChatId (fromIntegral suid))
-        subscriptionLangs
-        (renderSchedule g openDaysWithSlots)
+        [lang]
+        (renderChatSchedule g workingSchedule)
     liftIO $ threadDelay 500000
 
 unlockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()

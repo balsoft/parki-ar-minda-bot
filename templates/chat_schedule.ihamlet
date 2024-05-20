@@ -1,0 +1,7 @@
+<b>_{MsgScheduleIntro $ renderGarageName garage}
+\
+$forall (day, slots) <- days
+  \
+  <b>_{showDate day}
+  $forall (user, start, end, state) <- slots
+    #{renderUser user}: #{showHourMinutes start}-#{showHourMinutes end}&#13;&#10;

@@ -101,7 +101,7 @@ Ack: Acknowledged, thanks!
 
 Reported visitors@Int: There were #{visitors} visitors during this duty:
 
-ScheduleIntro garage@Html: Final schedule for #{garage}:
+ScheduleIntro garage@Html: Schedule for #{garage}:
 
 Monday: Monday
 Tuesday: Tuesday

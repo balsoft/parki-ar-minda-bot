@@ -165,6 +165,9 @@ renderUser TelegramUser {telegramUserUserId = uid, telegramUserFullName} = [sham
 renderGarage :: Garage -> Html
 renderGarage Garage {..} = [shamlet|#{garageName} (<a href="#{garageLink}">#{garageAddress}</a>)|]
 
+renderGarageName :: Garage -> Html
+renderGarageName Garage {..} = [shamlet|#{garageName}|]
+
 renderGarageText :: Garage -> Text
 renderGarageText Garage {..} = toStrict [lt|#{garageName} (#{garageAddress})|]
 
@@ -235,6 +238,9 @@ mergeIntervals slots = go (Data.List.sort slots)
 
 renderSchedule :: Garage -> [(Day, [(TimeOfDay, TimeOfDay)])] -> IHamlet
 renderSchedule g s = $(ihamletFile "templates/schedule.ihamlet")
+
+renderChatSchedule :: Garage -> WorkingScheduleList -> IHamlet
+renderChatSchedule garage days = $(ihamletFile "templates/chat_schedule.ihamlet")
 
 getSchedule :: ConnectionPool -> Day -> GarageId -> ClientM ScheduleList
 getSchedule pool weekStart garage = do
