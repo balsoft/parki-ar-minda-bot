@@ -42,8 +42,6 @@ import Data.Csv
 import System.IO.Temp
 import qualified Data.ByteString.Lazy as BS
 import System.Directory (removeFile)
-import Control.Concurrent.Async (async)
-import Control.Monad.Reader.Class (ask)
 
 insertCallbackQueryMessage :: ConnectionPool -> Response Message -> ClientM (Response Message)
 insertCallbackQueryMessage pool r@(Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}, messageReplyMarkup = Just (InlineKeyboardMarkup buttons)}}) = runInPool pool $ do
@@ -81,11 +79,12 @@ timeGrid d s =
             (TimeOfDay (sHour + 3) sMinute 0 >=)
           )
         Nothing -> (const False, const True)
+    lastHour = if isJust s then 22 else 21
     times =
       L.takeWhile timeNoMoreThan $
         dropWhile
           timeLessThan
-          [TimeOfDay hour minute 0 | hour <- [9 .. 21], minute <- [0, 30]]
+          [TimeOfDay hour minute 0 | hour <- [9 .. lastHour], minute <- [0, 30], hour /= lastHour || minute /= 30]
     label = if isJust s then "end_" else "start_"
     optionalStartTime = maybe "" (<> "_") s
 
