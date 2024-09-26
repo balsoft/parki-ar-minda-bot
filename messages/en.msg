@@ -44,7 +44,7 @@ CantCome: I can't come, cancel the appointment
 SureCancel: Are you sure you can't come in? This will <b>cancel</b> this appointment:
 YesCancel: Yes, I can't come in, cancel
 NoIWillCome: Never mind, I will come in
-YourSlotCancelled: Your slot has been <b>cancelled</b>
+YourSlotCancelled: Your slot has been <b>cancelled</b>.\nYou can give this link to another volunteer (for example, forward this message) so that they can substitute for you:
 ConfirmTomorrow: You are scheduled to be on duty tomorrow. Please confirm that you will come. If you fail to confirm this slot no later than <b>two hours</b> before the start of the slot, it will be <b>cancelled</b>:
 YesIWillCome: I will come
 ConfirmReminder: Looks like you still haven't confirmed your time slot for tomorrow. Please do so no later than <b>two hours</b> before the start of the slot.
@@ -67,7 +67,7 @@ Lock: Lock
 GarageOpenDays garage@Html: Which day should the #{garage} garage be open?
 WorkingScheduleFor garage@Html: Working schedule for #{garage}:
 NewScheduleFor garage@Html: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
-SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect. Please check the new schedule.
+SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.\n<b>Please check the new schedule.</b>\nYou can also forward this link to a volunteer so that they can substitute:
 SlotStillNotConfirmed: <b>Volunteer still has not confirmed this time slot</b>:
 SlotCancel: Cancel this slot
 SetOpenDaysReminder start@BotMessage: It's time to set the open days for garages for the next week (starting #{_tr "en" start})!

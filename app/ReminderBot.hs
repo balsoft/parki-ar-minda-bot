@@ -81,7 +81,7 @@ sendConfirmationReminders pool now = do
         langs
         [ihamlet|
           #{attention} _{MsgConfirmReminder}
-          ^slotDesc
+          ^{slotDesc}
           |]
         [ [ (__ MsgYesIWillCome, "confirm_" <> showSqlKey slotId)
           ],

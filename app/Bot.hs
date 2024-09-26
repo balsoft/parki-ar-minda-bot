@@ -3,10 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -Wno-unused-record-wildcards #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Bot
   ( bot,
@@ -14,15 +14,17 @@ module Bot
 where
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (forM, forM_, forever, unless, void, when)
+import Control.Monad (forM, forM_, forever, unless, void, when, (>=>))
 import Control.Monad.Except (MonadError (catchError))
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT)
+import qualified Data.ByteString.Lazy as BS
+import Data.Csv
 import Data.Functor (($>), (<&>))
 import Data.List ((\\))
 import qualified Data.List as L
 import Data.Maybe (fromJust, isJust, mapMaybe, maybeToList)
-import Data.Text as T (Text, pack, splitOn, stripPrefix, unpack)
+import Data.Text as T (Text, pack, replace, splitOn, stripPrefix, unpack)
 import Data.Text.IO (hPutStrLn)
 import Data.Time
 import Database.Persist
@@ -32,16 +34,14 @@ import Persist
 import Safe (readMay)
 import Servant.Client hiding (Response)
 import Symbols
+import System.Directory (removeFile)
 import System.IO (hPrint, stderr)
+import System.IO.Temp
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Hamlet (ihamlet, ihamletFile)
 import Text.Shakespeare.I18N (Lang)
 import Util
-import Data.Csv
-import System.IO.Temp
-import qualified Data.ByteString.Lazy as BS
-import System.Directory (removeFile)
 
 insertCallbackQueryMessage :: ConnectionPool -> Response Message -> ClientM (Response Message)
 insertCallbackQueryMessage pool r@(Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}, messageReplyMarkup = Just (InlineKeyboardMarkup buttons)}}) = runInPool pool $ do
@@ -249,7 +249,7 @@ existingSlotsStep langs pool chat@ChatChannel {..} msgId volunteer day = do
                   ]
                   | (Entity _ ScheduledSlot {..}, name) <- slots
                 ]
-                  ++ [ [ ([ihamlet|#{new} _{MsgNewAppointment}|],
+                  ++ [ [ ( [ihamlet|#{new} _{MsgNewAppointment}|],
                            "new_" <> showSqlKey day
                          )
                        ]
@@ -483,13 +483,18 @@ cancelSlot pool slotId = do
       desc <- getSlotDesc slot
       pure (slot, desc, openDayAvailable, langs, user, openDayGarage, weekStart)
   runInPool pool $ delete slotId
+  Just me <- userUsername . responseResult <$> getMe
+  let slotDay = showSqlKey (scheduledSlotDay slot)
+  let startTime = T.replace ":" "-" $ showHourMinutes (scheduledSlotStartTime slot)
+  let endTime = T.replace ":" "-" $ showHourMinutes (scheduledSlotEndTime slot)
+  let link = [ihamlet|https://t.me/#{me}?start=#{slotDay}_#{startTime}_#{endTime}|]
   flip catchError (liftIO . print) $
     void $
       send
         (ChatId (fromIntegral telegramUserUserId))
         langs
         [ihamlet|
-          #{attention} _{MsgYourSlotCancelled}
+          #{attention} _{MsgYourSlotCancelled} ^{link}
           ^{slotDesc}
         |]
   updateWorkingSchedule pool False weekStart gid `catchError` (liftIO . print)
@@ -503,7 +508,7 @@ cancelSlot pool slotId = do
           (ChatId (fromIntegral auid))
           adminLangs
           [ihamlet|
-            #{attention} _{MsgSlotCancelled}
+            #{attention} _{MsgSlotCancelled} ^{link}
             ^{slotFullDesc}
           |]
 
@@ -518,44 +523,45 @@ askCancelSlot langs pool ChatChannel {..} originalMsgId slotId = do
   Just slot <- runInPool pool $ get slotId
   Just volunteer <- runInPool pool $ get (scheduledSlotUser slot)
   Just TelegramUser {telegramUserUserId} <- runInPool pool $ get (volunteerUser volunteer)
-  if channelChatId == ChatId (fromIntegral telegramUserUserId) then do
-    slotDesc <- runInPool pool $ getSlotDesc slot
-    msg <-
-      responseResult
-        <$> sendWithButtons
-          channelChatId
-          langs
-          [ihamlet|
+  if channelChatId == ChatId (fromIntegral telegramUserUserId)
+    then do
+      slotDesc <- runInPool pool $ getSlotDesc slot
+      msg <-
+        responseResult
+          <$> sendWithButtons
+            channelChatId
+            langs
+            [ihamlet|
                 #{attention} _{MsgSureCancel}
                 ^{slotDesc}
               |]
-          [[(__ MsgYesCancel, "cancel"), (__ MsgNoIWillCome, "will_come")]]
+            [[(__ MsgYesCancel, "cancel"), (__ MsgNoIWillCome, "will_come")]]
 
-    doCancel <-
-      ignoreUntilRight
-        ( getUpdate channelUpdateChannel >>= \case
-            SomeNewCallbackQuery
-              q@CallbackQuery
-                { callbackQueryData = Just txt,
-                  callbackQueryMessage = Just msg'
-                }
-                | messageMessageId msg' == messageMessageId msg -> do
-                    void $
-                      answerCallbackQuery
-                        (answerCallbackQueryRequest (callbackQueryId q))
-                    pure $
-                      case txt of
-                        "will_come" -> Right False
-                        "cancel" -> Right True
-                        _ -> Left ()
-            _ -> pure (Left ())
-        )
-    void $ deleteMessage channelChatId (messageMessageId msg)
-    when doCancel $ do
-      flip catchError (liftIO . print) $ void $ deleteMessage channelChatId originalMsgId
-      cancelSlot pool slotId
-    pure doCancel
-  else pure False
+      doCancel <-
+        ignoreUntilRight
+          ( getUpdate channelUpdateChannel >>= \case
+              SomeNewCallbackQuery
+                q@CallbackQuery
+                  { callbackQueryData = Just txt,
+                    callbackQueryMessage = Just msg'
+                  }
+                  | messageMessageId msg' == messageMessageId msg -> do
+                      void $
+                        answerCallbackQuery
+                          (answerCallbackQueryRequest (callbackQueryId q))
+                      pure $
+                        case txt of
+                          "will_come" -> Right False
+                          "cancel" -> Right True
+                          _ -> Left ()
+              _ -> pure (Left ())
+          )
+      void $ deleteMessage channelChatId (messageMessageId msg)
+      when doCancel $ do
+        flip catchError (liftIO . print) $ void $ deleteMessage channelChatId originalMsgId
+        cancelSlot pool slotId
+      pure doCancel
+    else pure False
 
 confirmSlot ::
   [Lang] ->
@@ -640,10 +646,11 @@ banVolunteer pool tuid = do
   deleteCallbackQueryMessages pool ("ban_" <> showSqlKey tuid)
   forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
     let langs = maybeToList lang
-    void $ send
-      (ChatId (fromIntegral auid))
-      langs
-      [ihamlet|#{allGood} _{MsgVolunteerRemoved (renderUser user)}|]
+    void $
+      send
+        (ChatId (fromIntegral auid))
+        langs
+        [ihamlet|#{allGood} _{MsgVolunteerRemoved (renderUser user)}|]
 
 checkbox :: Bool -> Text
 checkbox False = "☐"
@@ -796,7 +803,6 @@ unlockSchedule _langs pool ChatChannel {..} day' gid = do
   days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
   sendOpenDaySchedule pool day gid days
 
-
 knownLangs :: [Text]
 knownLangs = ["en", "ru"]
 
@@ -929,6 +935,18 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} = forever $ do
             SomeNewMessage m@Message {..} ->
               case messageText of
                 Just "/start" -> reply m langs (__ MsgVolunteer) $> True
+                ((>>= stripPrefix "/start" >=> pure . T.splitOn "_") -> Just [d, s, e]) -> do
+                  _ <- askCreateStep
+                    langs
+                    pool
+                    chat
+                    Nothing
+                    volunteer
+                    (readSqlKey d)
+                    (fromJust $ parseHourMinutesM $ T.replace "-" ":" s)
+                    (fromJust $ parseHourMinutesM $ T.replace "-" ":" e)
+                  _ <- deleteMessage channelChatId messageMessageId
+                  pure True
                 Just "/signup" -> garageStep langs pool chat Nothing $> True
                 Just "/list" -> list langs chat volunteer pool $> True
                 Just "/subscribe" -> subscribe langs chat dbUserId pool $> True
