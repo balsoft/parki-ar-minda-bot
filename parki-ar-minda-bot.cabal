@@ -57,7 +57,7 @@ executable parki-ar-minda-bot
 
   -- .hs or .lhs file containing the Main module.
   main-is:          Main.hs
-  other-modules:    Util, I18N, Persist, Bot, ReminderBot, Symbols
+  other-modules:    Util, I18N, Persist, Bot, ReminderBot, Symbols, AppIntegration
   build-depends:
     , async
     , base
@@ -83,6 +83,13 @@ executable parki-ar-minda-bot
     , temporary
     , bytestring
     , directory
+    , jwt
+    , containers
+    , http-client
+    , http-client-tls
+    , aeson
+    , utf8-string
+    , http-types
 
   -- , shakespeare-i18n
   -- Directories containing source files.
