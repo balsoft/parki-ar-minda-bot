@@ -28,7 +28,7 @@ import Telegram.Bot.Monadic (runTelegramIntegrationBot)
 
 printError :: (Show a) => Either a b -> IO ()
 printError (Right _) = pure ()
-printError (Left a) = print a
+printError (Left a) = hPrint stderr a
 
 main :: IO ()
 main = do
@@ -42,11 +42,11 @@ main = do
       forever $ do
         void $
           async $
-            catchError (printError =<< defaultRunBot token' (reminderBot pool)) print
+            catchError (printError =<< defaultRunBot token' (reminderBot pool)) (hPrint stderr)
         threadDelay $ 60 * 1000000
   void $
     runTelegramIntegrationBot
       token'
       ( \chat ->
-          bot pool chat `catchError` (\e -> liftIO (print e) >> fail (show e))
+          bot pool chat `catchError` (\e -> liftIO (hPrint stderr e) >> fail (show e))
       )

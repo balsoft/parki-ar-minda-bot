@@ -39,12 +39,14 @@ import Text.Shakespeare.I18N (Lang)
 import Text.Shakespeare.Text (lt)
 import Control.Monad.Reader.Class (ask)
 import Control.Concurrent.Async
+import System.IO (hPrint)
+import GHC.IO.Handle.FD (stderr)
 
 instance MonadFail ClientM where
-  fail e = liftIO (print e) >> liftIO (fail e)
+  fail e = liftIO (hPrint stderr e) >> liftIO (fail e)
 
 ignoreError :: (MonadIO m, MonadError a m, Show a) => m () -> m ()
-ignoreError = flip catchError (liftIO . print)
+ignoreError = flip catchError (liftIO . hPrint stderr)
 
 (+-+) :: ToIHamlet t => Text -> t -> IHamlet
 symbol +-+ stuff = [ihamlet|#{symbol} ^{__ stuff}|]
@@ -285,14 +287,16 @@ updateWorkingSchedule pool recreate weekStart garage = do
     scheduleIHamlet <- renderWorkingSchedule g isLocked True <$> getWorkingSchedule pool weekStart garage <*> getSchedule pool weekStart garage
     let t = defaultRender langs scheduleIHamlet
     messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. s, CallbackQueryMultiChatChatId ==. auid] []
-    let buttons =
-          makeButtons langs $
-            if not isLocked
-              then [[([ihamlet|#{locked} _{MsgLock}|], "admin_lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]
-              else [[([ihamlet|#{unlocked} _{MsgUnlock}|], "admin_unlock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))]]
-    flip catchError (liftIO . print) $ case (recreate, messages) of
+    let lockButton =
+          if not isLocked
+            then ([ihamlet|#{locked} _{MsgLock}|], "admin_lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
+            else ([ihamlet|#{unlocked} _{MsgUnlock}|], "admin_unlock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
+    let changeButton = ([ihamlet|#{change} _{MsgChangeOpenDays}|], "admin_setopendays_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
+    let buttons = makeButtons langs [[changeButton], [lockButton]]
+
+    flip catchError (liftIO . hPrint stderr) $ case (recreate, messages) of
       (False, [Entity _ CallbackQueryMultiChat {..}]) -> do
-        flip catchError (liftIO . print) $
+        flip catchError (liftIO . hPrint stderr) $
           void $
             editMessageText
               (editMessageTextRequest t)
@@ -311,7 +315,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
                 }
         void $ runInPool pool $ insert $ CallbackQueryMultiChat auid (fromIntegral mid) s
         forM_ msgs $ \(Entity _ CallbackQueryMultiChat {..}) -> do
-          flip catchError (liftIO . print) $ void $ deleteMessage (ChatId (fromIntegral auid)) (MessageId $ fromIntegral callbackQueryMultiChatMsgId)
+          flip catchError (liftIO . hPrint stderr) $ void $ deleteMessage (ChatId (fromIntegral auid)) (MessageId $ fromIntegral callbackQueryMultiChatMsgId)
           runInPool pool $ deleteWhere [CallbackQueryMultiChatChatId ==. auid, CallbackQueryMultiChatMsgId ==. callbackQueryMultiChatMsgId]
 
 updateWorkingScheduleForDay :: ConnectionPool -> Bool -> OpenDayId -> ClientM ()

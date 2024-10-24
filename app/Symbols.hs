@@ -61,6 +61,9 @@ new = "➕"
 info :: Text
 info = "ⓘ "
 
+change :: Text
+change = "✍"
+
 people :: Text
 people = "👥"
 

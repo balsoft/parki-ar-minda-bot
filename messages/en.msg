@@ -65,6 +65,7 @@ Unlock: Unlock
 Unlocked: This schedule is unlocked. You can press the "Lock" button to lock this schedule before publishing it, or use /lock to lock all schedules for this week.
 Lock: Lock
 GarageOpenDays garage@Html: Which day should the #{garage} garage be open?
+ChangeOpenDays: Edit
 WorkingScheduleFor garage@Html: Working schedule for #{garage}:
 NewScheduleFor garage@Html: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
 SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.\n<b>Please check the new schedule.</b>\nYou can also forward this link to a volunteer so that they can substitute:

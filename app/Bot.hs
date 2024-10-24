@@ -419,7 +419,7 @@ slotCreated langs pool chat@ChatChannel {..} msgId volunteer day startTime endTi
       [[cancelSlotButton slotId]]
   menuStep langs chat Nothing (__ MsgAnotherSlot) [[(__ MsgAnotherGarage, "signup")], [(__ MsgSameGarage, "garage_" <> showSqlKey openDayGarage)], [(__ MsgDone, "cancel")]]
     <* updateWorkingSchedule pool False (thisWeekStart openDayDate) openDayGarage
-    `catchError` (liftIO . print)
+    `catchError` (liftIO . hPrint stderr)
 
 list :: [Lang] -> ChatChannel -> VolunteerId -> ConnectionPool -> ClientM ()
 list langs ChatChannel {channelChatId} volunteer pool = do
@@ -488,7 +488,7 @@ cancelSlot pool slotId = do
   let startTime = T.replace ":" "-" $ showHourMinutes (scheduledSlotStartTime slot)
   let endTime = T.replace ":" "-" $ showHourMinutes (scheduledSlotEndTime slot)
   let link = [ihamlet|https://t.me/#{me}?start=#{slotDay}_#{startTime}_#{endTime}|]
-  flip catchError (liftIO . print) $
+  flip catchError (liftIO . hPrint stderr) $
     void $
       send
         (ChatId (fromIntegral telegramUserUserId))
@@ -497,7 +497,7 @@ cancelSlot pool slotId = do
           #{attention} _{MsgYourSlotCancelled} ^{link}
           ^{slotDesc}
         |]
-  updateWorkingSchedule pool False weekStart gid `catchError` (liftIO . print)
+  updateWorkingSchedule pool False weekStart gid `catchError` (liftIO . hPrint stderr)
   admins <- runInPool pool getAdmins
   unless dayAvailable $
     forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
@@ -558,7 +558,7 @@ askCancelSlot langs pool ChatChannel {..} originalMsgId slotId = do
           )
       void $ deleteMessage channelChatId (messageMessageId msg)
       when doCancel $ do
-        flip catchError (liftIO . print) $ void $ deleteMessage channelChatId originalMsgId
+        flip catchError (liftIO . hPrint stderr) $ void $ deleteMessage channelChatId originalMsgId
         cancelSlot pool slotId
       pure doCancel
     else pure False
@@ -714,7 +714,7 @@ sendOpenDaySchedule :: ConnectionPool -> Day -> GarageId -> [Entity OpenDay] -> 
 sendOpenDaySchedule pool weekStart garage days = do
   subs <- runInPool pool (selectList [] [] >>= mapM (get . subscriptionUser . entityVal))
   Just g@Garage {..} <- runInPool pool $ get garage
-  updateWorkingSchedule pool False weekStart garage `catchError` (liftIO . print)
+  updateWorkingSchedule pool False weekStart garage `catchError` (liftIO . hPrint stderr)
   asyncClientM_ $ forM_ subs $ \(Just (TelegramUser uid lang _ _)) -> ignoreError $ do
     let langs = maybeToList lang
     catchError
@@ -783,7 +783,7 @@ lockSchedule _langs pool ChatChannel {..} day' gid = do
     updateWhere selector [OpenDayAvailable =. False]
   workingSchedule <- getWorkingSchedule pool day gid
   subscriptions <- runInPool pool (selectList [] [] >>= mapM (get . adminUser . entityVal))
-  updateWorkingSchedule pool False day gid `catchError` (liftIO . print)
+  updateWorkingSchedule pool False day gid `catchError` (liftIO . hPrint stderr)
   asyncClientM_ $ forM_ subscriptions $ \(Just (TelegramUser suid _ _ _)) -> forM_ ["en", "ru"] $ \lang -> ignoreError $ do
     void $
       send
