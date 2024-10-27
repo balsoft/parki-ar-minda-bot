@@ -81,6 +81,11 @@ NewVolunteer user@Html: #{user} был добавлен в список воло
 Ban: Заблокировать пользователя
 VolunteerRemoved user@Html: #{user} был удалён из списка волонтёров
 
+GarageInfo g@Text: Информация о гараже #{g}
+GarageName: Название
+GarageAddress: Адрес
+GarageLink: Ссылка
+
 Edit: Изменить
 Disable: Деактивировать
 Enable: Активировать

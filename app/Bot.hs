@@ -16,7 +16,7 @@ where
 import AppIntegration (AppSchedule, mkAppSchedule)
 import Control.Concurrent (threadDelay, writeChan)
 import Control.Concurrent.Chan (Chan)
-import Control.Monad (forM, forM_, forever, unless, void, when, (>=>))
+import Control.Monad (forM, forM_, forever, join, unless, void, when, (>=>))
 import Control.Monad.Except (MonadError (catchError))
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT)
@@ -44,7 +44,6 @@ import Telegram.Bot.Monadic
 import Text.Hamlet (ihamlet, ihamletFile)
 import Text.Shakespeare.I18N (Lang)
 import Util
-import Control.Monad (join)
 
 type AppChannel = Maybe (Chan AppSchedule)
 
@@ -819,9 +818,18 @@ unlockSchedule _langs pool ChatChannel {..} day' gid = do
 garageMenu :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe GarageId -> ClientM ()
 garageMenu langs pool chat@(ChatChannel {..}) garage = do
   g <- join <$> mapM (runInPool pool . get) garage
-  newName <- askFor MsgGarageName (garageName <$> g)
-  newAddress <- askFor MsgGarageAddress (garageAddress <$> g)
-  newLink <- askFor MsgGarageLink (garageLink <$> g)
+  newName <- askFor [ihamlet|#{house}<u>_{MsgGarageName}</u>?|] (garageName <$> g)
+  newAddress <- askFor [ihamlet|#{pin}<u>_{MsgGarageAddress}</u>?|] (garageAddress <$> g)
+  newLink <- askFor [ihamlet|#{link}<u>_{MsgGarageLink}</u>?|] (garageLink <$> g)
+  void $ sendMessage
+    ( sendMessageRequest
+        channelChatId
+        (defaultRender langs [ihamlet|_{MsgDone}|])
+    )
+      { sendMessageParseMode = Just HTML,
+        sendMessageReplyMarkup = Just $ SomeReplyKeyboardRemove (ReplyKeyboardRemove True Nothing)
+      }
+
   gid <-
     maybe
       (runInPool pool $ insert (Garage newName newAddress newLink))
@@ -834,10 +842,10 @@ garageMenu langs pool chat@(ChatChannel {..}) garage = do
         sendMessage
           ( sendMessageRequest
               channelChatId
-              (defaultRender langs [ihamlet|<b>_{thing}?|])
+              (defaultRender langs thing)
           )
             { sendMessageParseMode = Just HTML,
-              sendMessageReplyMarkup = (\txt -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing]] (Just False) (Just True) Nothing Nothing)) <$> def
+              sendMessageReplyMarkup = (\txt -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing]] (Just False) (Just False) Nothing (Just False))) <$> def
             }
       ignoreUntilRight
         ( getUpdate channelUpdateChannel >>= \case
@@ -859,11 +867,13 @@ sendGarageInfo langs pool (ChatChannel {..}) gid = do
     sendWithButtons
       channelChatId
       langs
-      [ihamlet|_{MsgGarageName}: #{garageName}
-      \
-      _{MsgGarageAddress}: #{garageAddress}
-      \
-      _{MsgGarageLink}: #{garageLink}|]
+      [ihamlet|
+#{info}<b>_{MsgGarageInfo garageName}</b>
+\
+#{house}<u>_{MsgGarageName}</u>: #{garageName}
+#{pin}<u>_{MsgGarageAddress}</u>: #{garageAddress}
+#{link}<u>_{MsgGarageLink}</u>: #{garageLink}
+      |]
       [[([ihamlet|#{change} _{MsgEdit}|], "admin_editgarage_" <> showSqlKey gid)], enableDisableButton]
   void $ runInPool pool $ insert (CallbackQueryMultiChat (fromIntegral cid) (fromIntegral mid) ("admin_garage_" <> showSqlKey gid))
 

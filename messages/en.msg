@@ -81,6 +81,7 @@ NewVolunteer user@Html: #{user} has been added to the list of volunteers
 Ban: Ban user
 VolunteerRemoved user@Html: #{user} has been removed from the list of volunteers
 
+GarageInfo g@Text: Information about #{g} garage
 GarageName: Name
 GarageAddress: Address
 GarageLink: Link

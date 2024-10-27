@@ -73,5 +73,11 @@ person = "👤"
 diamond :: Text
 diamond = "🔶"
 
+pin :: Text
+pin = "📍"
+
+link :: Text
+link = "🔗"
+
 br :: Text
 br = "&#13;&#10;"
