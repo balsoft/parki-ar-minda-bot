@@ -291,7 +291,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
           if not isLocked
             then ([ihamlet|#{locked} _{MsgLock}|], "admin_lock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
             else ([ihamlet|#{unlocked} _{MsgUnlock}|], "admin_unlock_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
-    let changeButton = ([ihamlet|#{change} _{MsgChangeOpenDays}|], "admin_setopendays_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
+    let changeButton = ([ihamlet|#{change} _{MsgEdit}|], "admin_setopendays_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart))
     let buttons = makeButtons langs [[changeButton], [lockButton]]
 
     flip catchError (liftIO . hPrint stderr) $ case (recreate, messages) of

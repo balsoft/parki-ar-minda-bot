@@ -93,6 +93,9 @@ Garage
     link Text
     UniqueGarage name
     deriving Show
+DisabledGarage -- Separate table to remove the need for migrations
+    garage GarageId
+    UniqueDisabledGarage garage
 TelegramUser
     userId Int
     lang Text Maybe
@@ -112,7 +115,7 @@ OpenDayReminder
     sentOn Day
     UniqueOpenDayReminder sentOn
     deriving Show
-CallbackQueryMultiChat
+CallbackQueryMultiChat -- To remember message ids for callback queries
     chatId Int
     msgId Int
     callbackQuery Text

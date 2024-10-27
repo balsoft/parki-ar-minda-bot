@@ -9,6 +9,8 @@ CommandLock: Lock the schedule and display the publishable version
 CommandWorkingSchedule: Show working schedule for next week
 CommandWorkingScheduleThisWeek: Show working schedule for this week
 CommandReport: Generate a csv report of all slots
+CommandGarages: View, edit or disable garages
+CommandNewGarage: Add a new garage
 
 Greet: Hello! This is a bot for eco-volunteers to sign up for duty in one of <b>parki ar minda</b> garages in Tbilisi.\nIf you want to learn more about us and what we do, check out @parkiarminda.\nYour application to become a volunteer is currently being evaluated by administrators. We will notify you when it is granted.
 Volunteer: Congratulations, you are now a volunteer. You can now /subscribe to notifications about scheduling starts and /signup for duty.
@@ -65,7 +67,7 @@ Unlock: Unlock
 Unlocked: This schedule is unlocked. You can press the "Lock" button to lock this schedule before publishing it, or use /lock to lock all schedules for this week.
 Lock: Lock
 GarageOpenDays garage@Html: Which day should the #{garage} garage be open?
-ChangeOpenDays: Edit
+Edit: Edit
 WorkingScheduleFor garage@Html: Working schedule for #{garage}:
 NewScheduleFor garage@Html: A new schedule for #{garage}! You can use /signup or click one of the buttons below to sign up for duty.
 SlotCancelled: This time slot has been cancelled. This means that the schedule which was previously generated is incorrect.\n<b>Please check the new schedule.</b>\nYou can also forward this link to a volunteer so that they can substitute:
@@ -78,6 +80,13 @@ Decline: Decline
 NewVolunteer user@Html: #{user} has been added to the list of volunteers
 Ban: Ban user
 VolunteerRemoved user@Html: #{user} has been removed from the list of volunteers
+
+GarageName: Name
+GarageAddress: Address
+GarageLink: Link
+
+Enable: Enable
+Disable: Disable
 
 Legend: Legend
 LegendCreated: Created

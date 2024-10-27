@@ -11,7 +11,7 @@
 module Main where
 
 import Bot (bot)
-import Control.Concurrent (threadDelay)
+import Control.Concurrent ( threadDelay, newChan )
 import Control.Concurrent.Async (async)
 import Control.Monad.Error.Class (MonadError (catchError))
 import Control.Monad.IO.Class (liftIO)
@@ -28,7 +28,6 @@ import Telegram.Bot.API (Token (Token), defaultRunBot)
 import Telegram.Bot.Monadic (runTelegramIntegrationBot)
 import Control.Monad (forM)
 import Control.Concurrent.Chan (readChan)
-import Control.Concurrent (newChan)
 import System.IO (hPrint)
 import GHC.IO.Handle.FD (stderr)
 

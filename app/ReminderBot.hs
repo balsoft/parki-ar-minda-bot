@@ -186,7 +186,8 @@ sendChecklist pool now = do
 sendOpenDayReminder :: ConnectionPool -> LocalTime -> ClientM ()
 sendOpenDayReminder pool now = do
   let today = localDay now
-  garages <- runInPool pool (selectList [] [])
+  disabledGarages <- runInPool pool (selectList [] [])
+  garages <- runInPool pool (selectList [GarageId /<-. fmap (disabledGarageGarage . entityVal) disabledGarages] [])
   runInPool pool (selectFirst [] [Desc OpenDayReminderSentOn]) >>= \case
     Just (Entity _ OpenDayReminder {..})
       | openDayReminderSentOn == today -> pure ()

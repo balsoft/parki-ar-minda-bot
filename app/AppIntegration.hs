@@ -8,7 +8,8 @@ module AppIntegration where
 import Control.Monad (when)
 import Control.Monad.Cont (forM_)
 import Data.Aeson ( ToJSON, encode )
-import qualified Data.ByteString.UTF8 as BS
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString.UTF8 as BSU
 import Data.Text ( pack, toLower, unpack, Text )
 import Data.Time (Day (ModifiedJulianDay))
 import Data.Time.Calendar (showGregorian)
@@ -94,7 +95,7 @@ submitSchedule AppConfig {..} schedule = do
             { method = "POST",
               requestBody = Network.HTTP.Client.RequestBodyLBS $ encode daySchedule,
               requestHeaders =
-                [ ("Authorization", "Bearer " <> BS.fromString (unpack jwt)),
+                [ ("Authorization", "Bearer " <> BSU.fromString (unpack jwt)),
                   ("Content-Type", "application/json"),
                   ("ngrok-skip-browser-warning", "true")
                 ]
@@ -104,4 +105,6 @@ submitSchedule AppConfig {..} schedule = do
 
     when (statusCode (Network.HTTP.Client.responseStatus resp) /= 200) $ do
       hPutStrLn stderr "Could not submit a schedule to the app"
+      BSL.hPutStr stderr $ encode daySchedule
+      hPutStrLn stderr ""
       hPrint stderr resp

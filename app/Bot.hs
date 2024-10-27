@@ -13,7 +13,9 @@ module Bot
   )
 where
 
-import Control.Concurrent (threadDelay)
+import AppIntegration (AppSchedule, mkAppSchedule)
+import Control.Concurrent (threadDelay, writeChan)
+import Control.Concurrent.Chan (Chan)
 import Control.Monad (forM, forM_, forever, unless, void, when, (>=>))
 import Control.Monad.Except (MonadError (catchError))
 import Control.Monad.IO.Unlift (MonadIO (liftIO))
@@ -42,9 +44,7 @@ import Telegram.Bot.Monadic
 import Text.Hamlet (ihamlet, ihamletFile)
 import Text.Shakespeare.I18N (Lang)
 import Util
-import Control.Concurrent.Chan (Chan)
-import AppIntegration (mkAppSchedule, AppSchedule)
-import Control.Concurrent (writeChan)
+import Control.Monad (join)
 
 type AppChannel = Maybe (Chan AppSchedule)
 
@@ -816,6 +816,57 @@ unlockSchedule _langs pool ChatChannel {..} day' gid = do
   days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
   sendOpenDaySchedule pool day gid days
 
+garageMenu :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe GarageId -> ClientM ()
+garageMenu langs pool chat@(ChatChannel {..}) garage = do
+  g <- join <$> mapM (runInPool pool . get) garage
+  newName <- askFor MsgGarageName (garageName <$> g)
+  newAddress <- askFor MsgGarageAddress (garageAddress <$> g)
+  newLink <- askFor MsgGarageLink (garageLink <$> g)
+  gid <-
+    maybe
+      (runInPool pool $ insert (Garage newName newAddress newLink))
+      (\g -> runInPool pool $ update g [GarageName =. newName, GarageAddress =. newAddress, GarageLink =. newLink] $> g)
+      garage
+  sendGarageInfo langs pool chat gid
+  where
+    askFor thing def = do
+      _ <-
+        sendMessage
+          ( sendMessageRequest
+              channelChatId
+              (defaultRender langs [ihamlet|<b>_{thing}?|])
+          )
+            { sendMessageParseMode = Just HTML,
+              sendMessageReplyMarkup = (\txt -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing]] (Just False) (Just True) Nothing Nothing)) <$> def
+            }
+      ignoreUntilRight
+        ( getUpdate channelUpdateChannel >>= \case
+            SomeNewMessage (Message {messageText = Just txt}) -> pure (Right txt)
+            _ -> pure (Left ())
+        )
+
+sendGarageInfo :: [Lang] -> ConnectionPool -> ChatChannel -> GarageId -> ClientM ()
+sendGarageInfo langs pool (ChatChannel {..}) gid = do
+  Just (Garage {..}) <- runInPool pool $ get gid
+  isDisabled <- runInPool pool $ isJust <$> selectFirst [DisabledGarageGarage ==. gid] []
+  let enableDisableButton =
+        if isDisabled
+          then [([ihamlet|#{allGood} _{MsgEnable}|], "admin_enablegarage_" <> showSqlKey gid)]
+          else [([ihamlet|#{bad} _{MsgDisable}|], "admin_disablegarage_" <> showSqlKey gid)]
+  deleteCallbackQueryMessages pool ("admin_garage_" <> showSqlKey gid)
+
+  (Response {responseResult = Message {messageMessageId = MessageId mid, messageChat = Chat {chatId = ChatId cid}}}) <-
+    sendWithButtons
+      channelChatId
+      langs
+      [ihamlet|_{MsgGarageName}: #{garageName}
+      \
+      _{MsgGarageAddress}: #{garageAddress}
+      \
+      _{MsgGarageLink}: #{garageLink}|]
+      [[([ihamlet|#{change} _{MsgEdit}|], "admin_editgarage_" <> showSqlKey gid)], enableDisableButton]
+  void $ runInPool pool $ insert (CallbackQueryMultiChat (fromIntegral cid) (fromIntegral mid) ("admin_garage_" <> showSqlKey gid))
+
 knownLangs :: [Text]
 knownLangs = ["en", "ru"]
 
@@ -834,7 +885,9 @@ adminCommands =
     ("lock", MsgCommandLock),
     ("workingschedule", MsgCommandWorkingSchedule),
     ("workingschedulethisweek", MsgCommandWorkingScheduleThisWeek),
-    ("report", MsgCommandReport)
+    ("report", MsgCommandReport),
+    ("garages", MsgCommandGarages),
+    ("newgarage", MsgCommandNewGarage)
   ]
 
 setCommands :: [(Text, BotMessage)] -> ChatChannel -> ClientM ()
@@ -853,9 +906,7 @@ setCommands commands ChatChannel {..} =
 untilTrue :: Monad m => [m Bool] -> m ()
 untilTrue [] = pure ()
 untilTrue (a : as) =
-  a >>= \case
-    True -> pure ()
-    False -> untilTrue as
+  a >>= flip when (untilTrue as) . not
 
 bot :: ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> ClientM ()
 bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = forever $ do
@@ -896,7 +947,12 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
             SomeNewMessage Message {..} ->
               case messageText of
                 Just "/start" -> send channelChatId [] [ihamlet|Welcome, admin!|] $> True
-                Just "/setopendays" -> (runInPool pool (selectList [] []) >>= mapM_ (setOpenDays langs pool chat Nothing . entityKey)) $> True
+                Just "/setopendays" -> do
+                  disabledGarages <- fmap (disabledGarageGarage . entityVal) <$> runInPool pool (selectList [] [])
+                  ( runInPool pool (selectList [GarageId /<-. disabledGarages] [])
+                      >>= mapM_ (setOpenDays langs pool chat Nothing . entityKey)
+                    )
+                    $> True
                 Just "/lock" -> (runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs pool chat appChannel Nothing . entityKey)) $> True
                 Just "/workingschedule" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
@@ -905,6 +961,12 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
                 Just "/workingschedulethisweek" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
                   runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (thisWeekStart today) . entityKey)
+                  pure True
+                Just "/garages" -> do
+                  runInPool pool (selectList [] []) >>= mapM_ (\(Entity gid (Garage {..})) -> sendGarageInfo langs pool chat gid)
+                  pure True
+                Just "/newgarage" -> do
+                  garageMenu langs pool chat Nothing
                   pure True
                 Just "/report" -> do
                   slots <- flattenSlots pool
@@ -941,6 +1003,18 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
                   ["admin", "setopendays", g, d] -> setOpenDays langs pool chat (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "lock", g, d] -> lockSchedule langs pool chat appChannel (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "unlock", g, d] -> unlockSchedule langs pool chat (parseGregorian d) (readSqlKey g) $> True
+                  ["admin", "editgarage", g] -> garageMenu langs pool chat (Just $ readSqlKey g) $> True
+                  ["admin", "disablegarage", g] -> do
+                    void $ runInPool pool $ insert (DisabledGarage $ readSqlKey g)
+                    sendGarageInfo langs pool chat $ readSqlKey g
+                    pure True
+                  ["admin", "enablegarage", g] -> do
+                    void $ runInPool pool $ do
+                      selectFirst [DisabledGarageGarage ==. readSqlKey g] [] >>= \case
+                        Just (Entity k _) -> delete k
+                        _ -> pure ()
+                    sendGarageInfo langs pool chat $ readSqlKey g
+                    pure True
                   _ -> pure False
             _ -> pure False
 
@@ -949,15 +1023,16 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
               case messageText of
                 Just "/start" -> reply m langs (__ MsgVolunteer) $> True
                 ((>>= stripPrefix "/start" >=> pure . T.splitOn "_") -> Just [d, s, e]) -> do
-                  _ <- askCreateStep
-                    langs
-                    pool
-                    chat
-                    Nothing
-                    volunteer
-                    (readSqlKey d)
-                    (fromJust $ parseHourMinutesM $ T.replace "-" ":" s)
-                    (fromJust $ parseHourMinutesM $ T.replace "-" ":" e)
+                  _ <-
+                    askCreateStep
+                      langs
+                      pool
+                      chat
+                      Nothing
+                      volunteer
+                      (readSqlKey d)
+                      (fromJust $ parseHourMinutesM $ T.replace "-" ":" s)
+                      (fromJust $ parseHourMinutesM $ T.replace "-" ":" e)
                   _ <- deleteMessage channelChatId messageMessageId
                   pure True
                 Just "/signup" -> garageStep langs pool chat Nothing $> True
