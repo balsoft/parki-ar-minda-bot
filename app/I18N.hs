@@ -20,7 +20,7 @@ module I18N
 where
 
 import Data.Text (Text, pack, replace)
-import Data.Time
+import Data.Time (Day, DayOfWeek (..), dayOfWeek, toGregorian)
 import Text.Shakespeare.I18N (Lang, RenderMessage (renderMessage), mkMessage, ToMessage (toMessage))
 import Text.Blaze.Html (Html)
 import Text.Blaze.Internal (MarkupM)

@@ -73,6 +73,7 @@ executable parki-ar-minda-bot
     , shakespeare
     , telegram-bot-monadic
     , telegram-bot-simple
+    , telegram-bot-api
     , text
     , time
     , transformers

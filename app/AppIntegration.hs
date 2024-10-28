@@ -5,8 +5,7 @@
 
 module AppIntegration where
 
-import Control.Monad (when)
-import Control.Monad.Cont (forM_)
+import Control.Monad (when, forM_)
 import Data.Aeson ( ToJSON, encode )
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.UTF8 as BSU

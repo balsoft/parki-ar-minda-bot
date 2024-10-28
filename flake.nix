@@ -9,29 +9,55 @@
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
     telegram-bot-monadic.url = "github:balsoft/telegram-bot-monadic";
+    telegram-bot-simple.url = "github:balsoft/telegram-bot-simple/fix-ChatFullInfo";
+    telegram-bot-simple.flake = false;
   };
 
-  outputs = { self, nixpkgs, flake-utils, telegram-bot-monadic }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      telegram-bot-monadic,
+      telegram-bot-simple,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        haskellPackages =
-          pkgs.haskellPackages.extend telegram-bot-monadic.overlays.default;
+        haskellPackages = (pkgs.haskellPackages.extend telegram-bot-monadic.overlays.default).extend (
+          final: prev: {
+            telegram-bot-api = prev.telegram-bot-api.overrideAttrs (_: {
+              src = "${telegram-bot-simple}/telegram-bot-api";
+            });
+            telegram-bot-simple = prev.telegram-bot-simple.overrideAttrs (_: {
+              src = "${telegram-bot-simple}/telegram-bot-simple";
+            });
+          }
+        );
 
-        jailbreakUnbreak = pkg:
-          pkgs.haskell.lib.doJailbreak (pkg.overrideAttrs (_: { meta = { }; }));
+        jailbreakUnbreak =
+          pkg:
+          pkgs.haskell.lib.doJailbreak (
+            pkg.overrideAttrs (_: {
+              meta = { };
+            })
+          );
 
         packageName = "parki-ar-minda-bot";
-      in {
+      in
+      {
         packages = {
           default = self.packages.${system}.${packageName};
           ${packageName} = haskellPackages.callCabal2nix packageName self rec {
             # Dependency overrides go here
           };
-          "${packageName}-static" = (pkgs.pkgsStatic.haskellPackages.extend
-            telegram-bot-monadic.overlays.default).callCabal2nix packageName
-            self { };
+          "${packageName}-static" =
+            (pkgs.pkgsStatic.haskellPackages.extend telegram-bot-monadic.overlays.default).callCabal2nix
+              packageName
+              self
+              { };
         };
 
         defaultPackage = self.packages.${system}.${packageName};
@@ -44,5 +70,6 @@
           ];
           inputsFrom = [ self.packages.${system}.default.env ];
         };
-      });
+      }
+    );
 }

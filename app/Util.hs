@@ -9,6 +9,8 @@
 module Util where
 
 import Control.Concurrent (Chan)
+import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Except
 import Control.Monad.Reader (ReaderT)
 import Data.Functor ((<&>))
@@ -67,7 +69,7 @@ getNewMessage ChatChannel {..} =
 send :: ChatId -> [Lang] -> IHamlet -> ClientM (Response Message)
 send cid langs msg =
   sendMessage
-    (sendMessageRequest cid (defaultRender langs msg))
+    (defSendMessage (SomeChatId cid) (defaultRender langs msg))
       { sendMessageParseMode = Just HTML
       }
 
@@ -76,7 +78,7 @@ type MessageButtons = [[(IHamlet, Text)]]
 sendWithButtons :: ChatId -> [Lang] -> IHamlet -> MessageButtons -> ClientM (Response Message)
 sendWithButtons cid langs msg grid =
   sendMessage
-    (sendMessageRequest cid (defaultRender langs msg))
+    (defSendMessage (SomeChatId cid) (defaultRender langs msg))
       { sendMessageParseMode = Just HTML,
         sendMessageReplyMarkup = Just $ makeButtons langs grid
       }
@@ -84,7 +86,7 @@ sendWithButtons cid langs msg grid =
 edit :: ChatId -> [Lang] -> MessageId -> IHamlet -> ClientM (Response EditMessageResponse)
 edit cid langs mid msg =
   editMessageText
-    (editMessageTextRequest (defaultRender langs msg))
+    (defEditMessageText (defaultRender langs msg))
       { editMessageTextChatId = Just $ SomeChatId cid,
         editMessageTextMessageId = Just mid,
         editMessageTextParseMode = Just HTML
@@ -93,7 +95,7 @@ edit cid langs mid msg =
 editWithButtons :: ChatId -> [Lang] -> MessageId -> IHamlet -> MessageButtons -> ClientM (Response EditMessageResponse)
 editWithButtons cid langs mid msg b = do
   editMessageText
-    (editMessageTextRequest (defaultRender langs msg))
+    (defEditMessageText (defaultRender langs msg))
       { editMessageTextChatId = Just $ SomeChatId cid,
         editMessageTextMessageId = Just mid,
         editMessageTextReplyMarkup = Just $ makeButtons langs b,
@@ -103,15 +105,16 @@ editWithButtons cid langs mid msg b = do
 editButtons :: ChatId -> [Lang] -> MessageId -> MessageButtons -> ClientM (Response EditMessageResponse)
 editButtons cid langs mid b = do
   editMessageReplyMarkup
-    (editMessageReplyMarkupRequest $ Just $ makeButtons langs b)
+    defEditMessageReplyMarkup
       { editMessageReplyMarkupChatId = Just $ SomeChatId cid,
+        editMessageReplyMarkupReplyMarkup = Just $ makeButtons langs b,
         editMessageReplyMarkupMessageId = Just mid
       }
 
 reply :: Message -> [Lang] -> IHamlet -> ClientM (Response Message)
 reply (Message {messageChat = Chat {chatId}, messageMessageId}) langs rpl =
   sendMessage
-    (sendMessageRequest chatId (defaultRender langs rpl))
+    (defSendMessage (SomeChatId chatId) (defaultRender langs rpl))
       { sendMessageParseMode = Just HTML,
         sendMessageReplyToMessageId = Just messageMessageId
       }
@@ -134,7 +137,7 @@ getCallbackQueryWithData channelUpdateChannel =
             { callbackQueryId,
               callbackQueryData = Just _
             } ->
-            answerCallbackQuery (answerCallbackQueryRequest callbackQueryId)
+            answerCallbackQuery (defAnswerCallbackQuery callbackQueryId)
               >> pure (Right q)
         _ -> pure $ Left ()
     )
@@ -281,7 +284,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
   Just g <- runInPool pool $ get garage
   isLocked <- checkLocked pool weekStart garage
   let s = "working_schedule_" <> showSqlKey garage <> "_" <> pack (showGregorian weekStart)
-  forM_ admins $ \(Just (TelegramUser auid lang _ _)) -> do
+  forM_ (catMaybes admins) $ \(TelegramUser auid lang _ _) -> do
     liftIO $ threadDelay 100000 -- Telegram rate limits
     let langs = maybeToList lang
     scheduleIHamlet <- renderWorkingSchedule g isLocked True <$> getWorkingSchedule pool weekStart garage <*> getSchedule pool weekStart garage
@@ -299,7 +302,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
         flip catchError (liftIO . hPrint stderr) $
           void $
             editMessageText
-              (editMessageTextRequest t)
+              (defEditMessageText t)
                 { editMessageTextMessageId = Just (MessageId $ fromIntegral callbackQueryMultiChatMsgId),
                   editMessageTextChatId = Just $ SomeChatId (ChatId $ fromIntegral auid),
                   editMessageTextParseMode = Just HTML,
@@ -309,7 +312,7 @@ updateWorkingSchedule pool recreate weekStart garage = do
         MessageId mid <-
           messageMessageId . responseResult
             <$> sendMessage
-              (sendMessageRequest (ChatId (fromIntegral auid)) t)
+              (defSendMessage (SomeChatId (ChatId (fromIntegral auid))) t)
                 { sendMessageParseMode = Just HTML,
                   sendMessageReplyMarkup = Just buttons
                 }

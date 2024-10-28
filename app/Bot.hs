@@ -25,7 +25,7 @@ import Data.Csv
 import Data.Functor (($>), (<&>))
 import Data.List ((\\))
 import qualified Data.List as L
-import Data.Maybe (fromJust, isJust, mapMaybe, maybeToList)
+import Data.Maybe (fromJust, isJust, mapMaybe, maybeToList, catMaybes)
 import Data.Text as T (Text, pack, replace, splitOn, stripPrefix, unpack)
 import Data.Text.IO (hPutStrLn)
 import Data.Time
@@ -432,7 +432,7 @@ list langs ChatChannel {channelChatId} volunteer pool = do
     runInPool pool $ do
       days <- fmap entityKey <$> selectList [OpenDayDate >=. today] []
       selectList [ScheduledSlotUser ==. volunteer, ScheduledSlotDay <-. days, ScheduledSlotState <-. [ScheduledSlotCreated, ScheduledSlotAwaitingConfirmation True, ScheduledSlotAwaitingConfirmation False, ScheduledSlotConfirmed, ScheduledSlotUnconfirmed]] []
-  when (null slots) $ void $ send channelChatId langs $ [ihamlet|#{info} _{MsgNoSlots}|]
+  when (null slots) $ void $ send channelChatId langs [ihamlet|#{info} _{MsgNoSlots}|]
   forM_ slots $ \(Entity slotId slot) -> do
     slotDesc <- runInPool pool $ getSlotDesc slot
     sendWithButtons channelChatId langs slotDesc [[cancelSlotButton slotId]]
@@ -557,7 +557,7 @@ askCancelSlot langs pool ChatChannel {..} appChannel originalMsgId slotId = do
                   | messageMessageId msg' == messageMessageId msg -> do
                       void $
                         answerCallbackQuery
-                          (answerCallbackQueryRequest (callbackQueryId q))
+                          (defAnswerCallbackQuery (callbackQueryId q))
                       pure $
                         case txt of
                           "will_come" -> Right False
@@ -694,7 +694,7 @@ inlinePoll ChatChannel {..} langs acceptable question grid initial = do
             )
         let a =
               answerCallbackQuery $
-                answerCallbackQueryRequest $
+                defAnswerCallbackQuery $
                   callbackQueryId q
         case callbackQueryData q of
           Just "done"
@@ -724,7 +724,7 @@ sendOpenDaySchedule pool weekStart garage days = do
   subs <- runInPool pool (selectList [] [] >>= mapM (get . subscriptionUser . entityVal))
   Just g@Garage {..} <- runInPool pool $ get garage
   updateWorkingSchedule pool False weekStart garage `catchError` (liftIO . hPrint stderr)
-  asyncClientM_ $ forM_ subs $ \(Just (TelegramUser uid lang _ _)) -> ignoreError $ do
+  asyncClientM_ $ forM_ (catMaybes subs) $ \(TelegramUser uid lang _ _) -> ignoreError $ do
     let langs = maybeToList lang
     catchError
       ( do
@@ -796,7 +796,7 @@ lockSchedule _langs pool ChatChannel {..} appChannel day' gid = do
     schedule <- getSchedule pool day gid
     liftIO $ writeChan chan $ mkAppSchedule garageName schedule
   updateWorkingSchedule pool False day gid `catchError` (liftIO . hPrint stderr)
-  asyncClientM_ $ forM_ subscriptions $ \(Just (TelegramUser suid _ _ _)) -> forM_ ["en", "ru"] $ \lang -> ignoreError $ do
+  asyncClientM_ $ forM_ (catMaybes subscriptions) $ \(TelegramUser suid _ _ _) -> forM_ ["en", "ru"] $ \lang -> ignoreError $ do
     void $
       send
         (ChatId (fromIntegral suid))
@@ -822,8 +822,8 @@ garageMenu langs pool chat@(ChatChannel {..}) garage = do
   newAddress <- askFor [ihamlet|#{pin}<u>_{MsgGarageAddress}</u>?|] (garageAddress <$> g)
   newLink <- askFor [ihamlet|#{link}<u>_{MsgGarageLink}</u>?|] (garageLink <$> g)
   void $ sendMessage
-    ( sendMessageRequest
-        channelChatId
+    ( defSendMessage
+        (SomeChatId channelChatId)
         (defaultRender langs [ihamlet|_{MsgDone}|])
     )
       { sendMessageParseMode = Just HTML,
@@ -840,12 +840,12 @@ garageMenu langs pool chat@(ChatChannel {..}) garage = do
     askFor thing def = do
       _ <-
         sendMessage
-          ( sendMessageRequest
-              channelChatId
+          ( defSendMessage
+              (SomeChatId channelChatId)
               (defaultRender langs thing)
           )
             { sendMessageParseMode = Just HTML,
-              sendMessageReplyMarkup = (\txt -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing]] (Just False) (Just False) Nothing (Just False))) <$> def
+              sendMessageReplyMarkup = (\txt -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing Nothing Nothing]] (Just False) (Just False) Nothing Nothing Nothing)) <$> def
             }
       ignoreUntilRight
         ( getUpdate channelUpdateChannel >>= \case
@@ -927,9 +927,9 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
           SomeNewCallbackQuery CallbackQuery {callbackQueryFrom} ->
             Just callbackQueryFrom
           _ -> Nothing
-  Response {responseResult = Chat {chatType}} <-
+  Response {responseResult = ChatFullInfo {chatFullInfoType}} <-
     getChat (SomeChatId channelChatId)
-  case chatType of
+  case chatFullInfoType of
     ChatTypePrivate -> do
       let Just
             u@User
@@ -994,7 +994,7 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
                   callbackQueryId
                 } -> do
                 void $
-                  answerCallbackQuery (answerCallbackQueryRequest callbackQueryId)
+                  answerCallbackQuery (defAnswerCallbackQuery callbackQueryId)
                 case T.splitOn "_" txt of
                   ["admin", "allow", t] -> do
                     allowVolunteer pool $ readSqlKey t
@@ -1071,7 +1071,7 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
                 } -> do
                 void $
                   answerCallbackQuery
-                    (answerCallbackQueryRequest callbackQueryId)
+                    (defAnswerCallbackQuery callbackQueryId)
                 case T.splitOn "_" txt of
                   ["signup", t] -> do
                     let day = readSqlKey t

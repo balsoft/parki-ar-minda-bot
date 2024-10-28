@@ -9,7 +9,8 @@ module ReminderBot
   )
 where
 
-import Control.Monad.Except
+import Control.Monad
+import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (maybeToList)
 import Data.Text (pack)
 import Data.Time
@@ -20,7 +21,6 @@ import Persist
 import Servant.Client hiding (Response)
 import Symbols
 import Telegram.Bot.API
-import Telegram.Bot.Monadic
 import Text.Hamlet
 import Util
 
@@ -172,8 +172,8 @@ sendChecklist pool now = do
     MessageId mid <-
       messageMessageId . responseResult
         <$> sendMessage
-          ( sendMessageRequest
-              (ChatId (fromIntegral telegramUserUserId))
+          ( defSendMessage
+              (SomeChatId $ ChatId $ fromIntegral telegramUserUserId)
               (defaultRender langs $(ihamletFile "templates/checklist.ihamlet"))
           )
             { sendMessageParseMode = Just HTML,
