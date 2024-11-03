@@ -1,3 +1,5 @@
 cradle:
   bios:
-    shell: "printf '%s' \"-working-dir $PWD/app\" > $HIE_BIOS_OUTPUT"
+    shell: |
+      echo "-v" > $HIE_BIOS_OUTPUT
+      echo "-i $(realpath $(dirname $HIE_BIOS_ARG))" >> $HIE_BIOS_OUTPUT
