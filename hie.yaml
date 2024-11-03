@@ -1,0 +1,3 @@
+cradle:
+  bios:
+    shell: "printf '%s' \"-working-dir $PWD/app\" > $HIE_BIOS_OUTPUT"
