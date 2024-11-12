@@ -24,18 +24,24 @@
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
-
-        haskellPackages = (pkgs.haskellPackages.extend telegram-bot-monadic.overlays.default).extend (
-          final: prev: {
+        overlay = pkgs.lib.composeManyExtensions [
+          telegram-bot-monadic.overlays.default
+          (final: prev: {
             telegram-bot-api = prev.telegram-bot-api.overrideAttrs (_: {
               src = "${telegram-bot-simple}/telegram-bot-api";
             });
             telegram-bot-simple = prev.telegram-bot-simple.overrideAttrs (_: {
               src = "${telegram-bot-simple}/telegram-bot-simple";
             });
-          }
-        );
+          })
+        ];
+
+        pkgs = nixpkgs.legacyPackages.${system};
+
+        haskellPackages = pkgs.haskellPackages.extend overlay;
+        haskellPackagesStatic = pkgs.haskellPackages.extend overlay;
+
+
 
         jailbreakUnbreak =
           pkg:
@@ -54,7 +60,7 @@
             # Dependency overrides go here
           };
           "${packageName}-static" =
-            (pkgs.pkgsStatic.haskellPackages.extend telegram-bot-monadic.overlays.default).callCabal2nix
+            haskellPackagesStatic.callCabal2nix
               packageName
               self
               { };
