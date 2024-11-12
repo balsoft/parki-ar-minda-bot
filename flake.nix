@@ -39,7 +39,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
 
         haskellPackages = pkgs.haskellPackages.extend overlay;
-        haskellPackagesStatic = pkgs.haskellPackages.extend overlay;
+        haskellPackagesStatic = pkgs.pkgsStatic.haskellPackages.extend overlay;
 
 
 
