@@ -5,7 +5,7 @@
 
 module AppIntegration where
 
-import Control.Monad (when, forM_)
+import Control.Monad (when, forM_, void)
 import Data.Aeson ( ToJSON, encode )
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.UTF8 as BSU
@@ -82,28 +82,44 @@ mkAppSchedule garageName scheduleList =
 -- | Configuration for the app integration
 data AppConfig = AppConfig { url :: Text, token :: Text }
 
+-- a.k.a sequenceWhile
+takeWhileM :: Monad m => (a -> Bool) -> [m a] -> m [a]
+takeWhileM f (m:ms) = do
+  a <- m
+  if f a
+    then do
+      b <- takeWhileM f ms
+      pure (a:b)
+     else pure []
+takeWhileM f [] = pure []
+
 -- | Submit the schedule, handling authorization
 submitSchedule :: AppConfig -> AppSchedule -> IO ()
 submitSchedule AppConfig {..} schedule = do
   jwt <- mkSignature token <$> getCurrentTime
   req <- Network.HTTP.Client.parseRequest $ unpack url
 
-  forM_ schedule $ \daySchedule -> flip catchError (hPrint stderr) $ do
-    let req' =
-          req
-            { method = "POST",
-              requestBody = Network.HTTP.Client.RequestBodyLBS $ encode daySchedule,
-              requestHeaders =
-                [ ("Authorization", "Bearer " <> BSU.fromString (unpack jwt)),
-                  ("Content-Type", "application/json"),
-                  ("ngrok-skip-browser-warning", "true")
-                ]
-            }
-    manager <- Network.HTTP.Client.newManager tlsManagerSettings
-    resp <- Network.HTTP.Client.httpLbs req' manager
+  forM_ schedule $ \daySchedule -> flip catchError (hPrint stderr)
+    (void $ takeWhileM not $ replicate 3 $ do
+      let req' =
+            req
+              { method = "POST",
+                requestBody = Network.HTTP.Client.RequestBodyLBS $ encode daySchedule,
+                requestHeaders =
+                  [ ("Authorization", "Bearer " <> BSU.fromString (unpack jwt)),
+                    ("Content-Type", "application/json"),
+                    ("ngrok-skip-browser-warning", "true")
+                  ]
+              }
+      manager <- Network.HTTP.Client.newManager tlsManagerSettings
+      resp <- Network.HTTP.Client.httpLbs req' manager
 
-    when (statusCode (Network.HTTP.Client.responseStatus resp) /= 200) $ do
-      hPutStrLn stderr "Could not submit a schedule to the app"
-      BSL.hPutStr stderr $ encode daySchedule
-      hPutStrLn stderr ""
-      hPrint stderr resp
+      if statusCode (Network.HTTP.Client.responseStatus resp) /= 200
+        then do
+          hPutStrLn stderr "Could not submit a schedule to the app"
+          BSL.hPutStr stderr $ encode daySchedule
+          hPutStrLn stderr ""
+          hPrint stderr resp
+          pure False
+        else pure True
+    )
