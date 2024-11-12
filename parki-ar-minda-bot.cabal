@@ -91,6 +91,8 @@ executable parki-ar-minda-bot
     , aeson
     , utf8-string
     , http-types
+    , parsec
+    , time-parsers
 
   -- , shakespeare-i18n
   -- Directories containing source files.

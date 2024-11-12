@@ -6,6 +6,7 @@
 
 module ReminderBot
   ( reminderBot,
+    ReminderConfig (..),
   )
 where
 
@@ -23,6 +24,13 @@ import Symbols
 import Telegram.Bot.API
 import Text.Hamlet
 import Util
+
+data ReminderConfig = ReminderConfig
+  { requestsTime :: TimeOfDay,
+    remindersTime :: TimeOfDay,
+    openDayRemindersDay :: DayOfWeek,
+    openDayRemindersTime :: TimeOfDay
+  }
 
 sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
 sendConfirmationRequests pool now = do
@@ -205,18 +213,18 @@ sendOpenDayReminder pool now = do
               | (Entity gid garage) <- garages
             ]
 
-reminderBot :: ConnectionPool -> ClientM ()
-reminderBot pool = do
+reminderBot :: ConnectionPool -> ReminderConfig -> ClientM ()
+reminderBot pool (ReminderConfig {..}) = do
   now <- zonedTimeToLocalTime <$> liftIO getZonedTime
-  when (localTimeOfDay now >= TimeOfDay 12 00 00) $
+  when (localTimeOfDay now >= remindersTime) $
     sendConfirmationRequests pool now
-  when (localTimeOfDay now >= TimeOfDay 18 00 00) $
+  when (localTimeOfDay now >= requestsTime) $
     sendConfirmationReminders pool now
   notifyUnconfirmedSlots pool now
   sendLastReminders pool now
   sendChecklist pool now
   when
-    ( dayOfWeek (localDay now) == Wednesday
-        && localTimeOfDay now >= TimeOfDay 12 00 00
+    ( dayOfWeek (localDay now) == openDayRemindersDay
+        && localTimeOfDay now >= openDayRemindersTime
     )
     $ sendOpenDayReminder pool now

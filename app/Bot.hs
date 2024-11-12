@@ -392,8 +392,9 @@ slotCreated ::
   OpenDayId ->
   TimeOfDay ->
   TimeOfDay ->
+  TimeOfDay ->
   ClientM MessageId
-slotCreated langs pool chat@ChatChannel {..} msgId volunteer day startTime endTime = do
+slotCreated langs pool chat@ChatChannel {..} msgId volunteer day startTime endTime reminderTime = do
   slotId <-
     runInPool
       pool
@@ -411,6 +412,12 @@ slotCreated langs pool chat@ChatChannel {..} msgId volunteer day startTime endTi
   Just slot <- runInPool pool $ get slotId
   slotDesc <- runInPool pool $ getSlotDesc slot
   Just OpenDay {openDayGarage, openDayDate} <- runInPool pool $ get (scheduledSlotDay slot)
+  now <- zonedTimeToLocalTime <$> liftIO getZonedTime
+  let today = localDay now
+  let timeNow = localTimeOfDay now
+  -- Auto-confirm slots that are created after the reminders were sent; e.g. with /start
+  when (diffDays openDayDate today == 0 || (diffDays openDayDate today == 1 && (realToFrac (timeOfDayToTime timeNow) > realToFrac (timeOfDayToTime reminderTime)))) $
+    runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotConfirmed]
   void $
     menuStep
       langs
@@ -918,8 +925,8 @@ untilTrue [] = pure ()
 untilTrue (a : as) =
   a >>= flip when (untilTrue as) . not
 
-bot :: ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> ClientM ()
-bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = forever $ do
+bot :: ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> TimeOfDay -> ClientM ()
+bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel reminderTime = forever $ do
   upd <- getUpdate channelUpdateChannel
   let user =
         case upd of
@@ -1096,9 +1103,9 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel = for
                             <&> filter (\(Entity _ ScheduledSlot {..}) -> timesIntersect (scheduledSlotStartTime, scheduledSlotEndTime) (startTime, endTime))
                         pure $ concat conflicts
                     forM_ slots (cancelSlot pool appChannel . entityKey)
-                    void $ slotCreated langs pool chat (Just messageMessageId) volunteer (readSqlKey d) startTime endTime
+                    void $ slotCreated langs pool chat (Just messageMessageId) volunteer (readSqlKey d) startTime endTime reminderTime
                     pure True
-                  ["create", d, s, e] -> slotCreated langs pool chat (Just messageMessageId) volunteer (readSqlKey d) (fromJust $ parseHourMinutesM s) (fromJust $ parseHourMinutesM e) $> True
+                  ["create", d, s, e] -> slotCreated langs pool chat (Just messageMessageId) volunteer (readSqlKey d) (fromJust $ parseHourMinutesM s) (fromJust $ parseHourMinutesM e) reminderTime $> True
                   ["cancel", t] ->
                     askCancelSlot langs pool chat appChannel messageMessageId (readSqlKey t) $> True
                   ["confirm", d] ->

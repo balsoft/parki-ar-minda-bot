@@ -43,6 +43,9 @@ import Control.Monad.Reader.Class (ask)
 import Control.Concurrent.Async
 import System.IO (hPrint)
 import GHC.IO.Handle.FD (stderr)
+import Data.Either (fromRight)
+import Text.Parsec (parse)
+import qualified Data.Time.Parsers as DTP
 
 instance MonadFail ClientM where
   fail e = liftIO (hPrint stderr e) >> liftIO (fail e)
@@ -379,3 +382,9 @@ asyncClientM_ :: ClientM () -> ClientM ()
 asyncClientM_ c = do
   clientEnv <- ask
   void $ liftIO $ async $ runClientM c clientEnv
+
+parseTimeOfDay :: String -> TimeOfDay
+parseTimeOfDay = fromRight undefined . parse DTP.timeOfDay "" . pack
+
+parseDayOfWeek :: String -> DayOfWeek
+parseDayOfWeek = read
