@@ -111,11 +111,11 @@
         "telegram-bot-simple": "telegram-bot-simple"
       },
       "locked": {
-        "lastModified": 1730116634,
-        "narHash": "sha256-ui2yqELKTJk/bczzyPC3RqiKy0gdGBcxO2Uy4h+zrvc=",
+        "lastModified": 1731433282,
+        "narHash": "sha256-p5mhWK+PD3qFZOd+yjGWdXi+m0wcT7e2XEa8QVYSzTk=",
         "owner": "balsoft",
         "repo": "telegram-bot-monadic",
-        "rev": "3866af022701d7a580970e8eff66711d2b56536c",
+        "rev": "14884d6f909b6fa9eb8866382e9653288697fba7",
         "type": "github"
       },
       "original": {
