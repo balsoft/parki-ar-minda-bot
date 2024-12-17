@@ -43,14 +43,6 @@
 
 
 
-        jailbreakUnbreak =
-          pkg:
-          pkgs.haskell.lib.doJailbreak (
-            pkg.overrideAttrs (_: {
-              meta = { };
-            })
-          );
-
         packageName = "parki-ar-minda-bot";
       in
       {
@@ -72,7 +64,7 @@
           buildInputs = with pkgs; [
             haskellPackages.haskell-language-server # you must build it with your ghc to work
             ghcid
-            cabal-install
+            # cabal-install
           ];
           inputsFrom = [ self.packages.${system}.default.env ];
         };
