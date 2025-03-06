@@ -216,9 +216,9 @@ sendOpenDayReminder pool now = do
 reminderBot :: ConnectionPool -> ReminderConfig -> ClientM ()
 reminderBot pool (ReminderConfig {..}) = do
   now <- zonedTimeToLocalTime <$> liftIO getZonedTime
-  when (localTimeOfDay now >= remindersTime) $
-    sendConfirmationRequests pool now
   when (localTimeOfDay now >= requestsTime) $
+    sendConfirmationRequests pool now
+  when (localTimeOfDay now >= remindersTime) $
     sendConfirmationReminders pool now
   notifyUnconfirmedSlots pool now
   sendLastReminders pool now
