@@ -15,25 +15,28 @@ import Control.Monad.Except
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ReaderT)
 import Control.Monad.Reader.Class (ask)
-import Data.ByteString qualified
+import qualified Data.ByteString
 import Data.ByteString.Lazy (ByteString)
 import Data.Default (def)
 import Data.Either (fromRight)
 import Data.Functor ((<&>))
-import Data.List qualified
+import qualified Data.List
 import Data.Map (fromList)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, maybeToList)
-import Data.Text (Text, pack, unpack, splitOn)
+import Data.Text (Text, pack, splitOn, unpack)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Text.Lazy (fromStrict, toStrict)
 import Data.Time
   ( Day (ModifiedJulianDay),
+    LocalTime (localDay),
     TimeOfDay,
     TimeZone,
     UTCTime,
+    ZonedTime (zonedTimeToLocalTime),
     dayOfWeek,
+    getZonedTime,
     showGregorian,
-    toGregorian, LocalTime (localDay), getZonedTime, ZonedTime (zonedTimeToLocalTime),
+    toGregorian,
   )
 import Data.Time.Calendar (DayOfWeek (Monday))
 import Data.Time.Clock (diffTimeToPicoseconds)
@@ -45,7 +48,7 @@ import Data.Time.Format.ISO8601
     hourMinuteFormat,
   )
 import Data.Time.LocalTime (LocalTime (LocalTime), localTimeToUTC, sinceMidnight)
-import Data.Time.Parsers qualified as DTP
+import qualified Data.Time.Parsers as DTP
 import Data.UUID (fromString, toText)
 import Data.UUID.V5 (generateNamed)
 import Database.Persist
@@ -398,18 +401,18 @@ flattenSlots pool start end = runInPool pool $ do
     get scheduledSlotDay >>= \case
       Just (OpenDay {openDayGarage, openDayDate})
         | openDayDate >= start' && openDayDate < end' -> do
-          Just (Garage {garageName}) <- get openDayGarage
-          (fullName, userName) <-
-            get scheduledSlotUser >>= \case
-              Nothing -> pure (dm, dm)
-              Just (Volunteer {volunteerUser}) ->
-                get volunteerUser >>= \case
-                  Nothing -> pure (dm, dm)
-                  Just (TelegramUser {telegramUserFullName, telegramUserUsername}) -> pure (telegramUserFullName, fromMaybe "" telegramUserUsername)
-          let visitors = case scheduledSlotState of
-                (ScheduledSlotChecklistComplete v) -> Just v
-                _ -> Nothing
-          pure $ Just (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderStateText scheduledSlotState, pack $ maybe "" show visitors)
+            Just (Garage {garageName}) <- get openDayGarage
+            (fullName, userName) <-
+              get scheduledSlotUser >>= \case
+                Nothing -> pure (dm, dm)
+                Just (Volunteer {volunteerUser}) ->
+                  get volunteerUser >>= \case
+                    Nothing -> pure (dm, dm)
+                    Just (TelegramUser {telegramUserFullName, telegramUserUsername}) -> pure (telegramUserFullName, fromMaybe "" telegramUserUsername)
+            let visitors = case scheduledSlotState of
+                  (ScheduledSlotChecklistComplete v) -> Just v
+                  _ -> Nothing
+            pure $ Just (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderStateText scheduledSlotState, pack $ maybe "" show visitors)
       _ -> pure Nothing
   pure $ catMaybes maybeSlots
   where
