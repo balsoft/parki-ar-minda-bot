@@ -95,6 +95,8 @@ executable parki-ar-minda-bot
     , time-parsers
     , iCalendar
     , uuid
+    , data-default
+    , network-uri
 
   -- , shakespeare-i18n
   -- Directories containing source files.
