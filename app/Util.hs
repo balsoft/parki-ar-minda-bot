@@ -23,17 +23,17 @@ import Data.Functor ((<&>))
 import Data.List qualified
 import Data.Map (fromList)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, maybeToList)
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text, pack, unpack, splitOn)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Text.Lazy (fromStrict, toStrict)
 import Data.Time
-  ( Day,
+  ( Day (ModifiedJulianDay),
     TimeOfDay,
     TimeZone,
     UTCTime,
     dayOfWeek,
     showGregorian,
-    toGregorian,
+    toGregorian, LocalTime (localDay), getZonedTime, ZonedTime (zonedTimeToLocalTime),
   )
 import Data.Time.Calendar (DayOfWeek (Monday))
 import Data.Time.Clock (diffTimeToPicoseconds)
@@ -357,10 +357,19 @@ updateWorkingScheduleForDay pool recreate dayId = do
 makeButtons :: [Lang] -> [[(IHamlet, Text)]] -> SomeReplyMarkup
 makeButtons langs grid = ik (fmap (\(text, callback) -> ikb (defaultRender langs text) callback) <$> grid)
 
+parseWeirdDate :: Text -> Maybe Day
+parseWeirdDate s = case splitOn "-" s of
+  [y] -> parseGregorian (y <> "-01-01")
+  [y, m] -> parseGregorian (y <> "-" <> m <> "-01")
+  [y, m, d] -> parseGregorian s
+  _ -> Nothing
+
 -- | Flatten all slots which are completed
 flattenSlots ::
   (MonadIO m) =>
   ConnectionPool ->
+  Maybe Day ->
+  Maybe Day ->
   m
     [ ( Text,
         -- \| Name of the garage
@@ -381,24 +390,28 @@ flattenSlots ::
     ]
 -- \| The amount of visitors (if available)
 
-flattenSlots pool = runInPool pool $ do
+flattenSlots pool start end = runInPool pool $ do
   slots <- selectList [] []
-  forM slots $ \(Entity _ ScheduledSlot {..}) -> do
+  let start' = fromMaybe (ModifiedJulianDay 0) start
+  end' <- flip fromMaybe end . succ . localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
+  maybeSlots <- forM slots $ \(Entity _ ScheduledSlot {..}) ->
     get scheduledSlotDay >>= \case
-      Nothing -> pure (dm, dm, dm, dm, dm, dm, dm, dm)
-      Just (OpenDay {openDayGarage, openDayDate}) -> do
-        Just (Garage {garageName}) <- get openDayGarage
-        (fullName, userName) <-
-          get scheduledSlotUser >>= \case
-            Nothing -> pure (dm, dm)
-            Just (Volunteer {volunteerUser}) ->
-              get volunteerUser >>= \case
-                Nothing -> pure (dm, dm)
-                Just (TelegramUser {telegramUserFullName, telegramUserUsername}) -> pure (telegramUserFullName, fromMaybe "" telegramUserUsername)
-        let visitors = case scheduledSlotState of
-              (ScheduledSlotChecklistComplete v) -> Just v
-              _ -> Nothing
-        pure (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderStateText scheduledSlotState, pack $ maybe "" show visitors)
+      Just (OpenDay {openDayGarage, openDayDate})
+        | openDayDate >= start' && openDayDate < end' -> do
+          Just (Garage {garageName}) <- get openDayGarage
+          (fullName, userName) <-
+            get scheduledSlotUser >>= \case
+              Nothing -> pure (dm, dm)
+              Just (Volunteer {volunteerUser}) ->
+                get volunteerUser >>= \case
+                  Nothing -> pure (dm, dm)
+                  Just (TelegramUser {telegramUserFullName, telegramUserUsername}) -> pure (telegramUserFullName, fromMaybe "" telegramUserUsername)
+          let visitors = case scheduledSlotState of
+                (ScheduledSlotChecklistComplete v) -> Just v
+                _ -> Nothing
+          pure $ Just (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderStateText scheduledSlotState, pack $ maybe "" show visitors)
+      _ -> pure Nothing
+  pure $ catMaybes maybeSlots
   where
     dm = "<deleted>"
 

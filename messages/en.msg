@@ -8,7 +8,7 @@ CommandSetOpenDays: Select days for which the volunteers are able to sign up
 CommandLock: Lock the schedule and display the publishable version
 CommandWorkingSchedule: Show working schedule for next week
 CommandWorkingScheduleThisWeek: Show working schedule for this week
-CommandReport: Generate a csv report of all slots
+CommandReport: Generate a csv report of all slots (or [<since>[ <until>]], e.g. `/report 2024 2025`)
 CommandGarages: View, edit or disable garages
 CommandNewGarage: Add a new garage
 

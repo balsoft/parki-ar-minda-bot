@@ -1000,8 +1000,13 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                 Just "/newgarage" -> do
                   garageMenu langs pool chat Nothing
                   pure True
-                Just "/report" -> do
-                  slots <- flattenSlots pool
+                ((>>= stripPrefix "/report" >=> pure . T.splitOn " ") -> Just lst) -> do
+                  let (start, end) =
+                        case lst of
+                          ["", s] -> (parseWeirdDate s, Nothing)
+                          ["", s, e] -> (parseWeirdDate s, parseWeirdDate e)
+                          _ -> (Nothing, Nothing)
+                  slots <- flattenSlots pool start end
                   file <- liftIO $ emptySystemTempFile "report.csv"
                   liftIO $ BS.writeFile file $ encode slots
                   _ <- sendDocument (toSendDocument (SomeChatId channelChatId) $ DocumentFile file "application/csv")
