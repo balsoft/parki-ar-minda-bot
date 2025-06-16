@@ -93,6 +93,8 @@ executable parki-ar-minda-bot
     , http-types
     , parsec
     , time-parsers
+    , iCalendar
+    , uuid
 
   -- , shakespeare-i18n
   -- Directories containing source files.

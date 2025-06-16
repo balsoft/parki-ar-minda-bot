@@ -36,6 +36,22 @@
         "type": "github"
       }
     },
+    "iCalendar": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1734978256,
+        "narHash": "sha256-RUp5o/2AZF9Zr68tE/SV+QJVYJgYh0Y1zq4oD7F59pc=",
+        "owner": "chrra",
+        "repo": "iCalendar",
+        "rev": "c375e3bf7c21799ac78e15666f8977e87002ff31",
+        "type": "github"
+      },
+      "original": {
+        "owner": "chrra",
+        "repo": "iCalendar",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1730114215,
@@ -69,6 +85,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "iCalendar": "iCalendar",
         "nixpkgs": "nixpkgs",
         "telegram-bot-monadic": "telegram-bot-monadic",
         "telegram-bot-simple": "telegram-bot-simple_2"

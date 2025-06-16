@@ -50,6 +50,7 @@ There are _OPTIONAL_:
 |`PARKI_AR_MINDA_OPEN_DAY_REMINDERS_TIME`|`12:00:00`|The time at which reminders to open the next week for signups are sent to admins (on `PARKI_AR_MINDA_OPEN_REMINDERS_DAY`)|`13:00:00`|
 |`PARKI_AR_MINDA_APP_URL`|_None_|URL to the parki ar minda app for the integration. Unless both this variable and `PARKI_AR_MINDA_APP_TOKEN` are present, the integration is disabled. If the integration is enabled, it automatically sends schedule information to the app|`./database2.sqlite`|
 |`PARKI_AR_MINDA_APP_TOKEN`|_None_|Token to authorize with the parki ar minda app for the integration. Unless both this variable and `PARKI_AR_MINDA_APP_URL` are present, the integration is disabled|`./database2.sqlite`|
+|`PARKI_AR_MINDA_ICS_DIRECTORY`|_None_|The directory in which to save ics (iCalendar) files whenever a schedule is locked. If set, the directory must exist and be writable by the bot before the bot is started. If not set, saving ics files is disabled.|`/var/www/calendars`|
 
 ### Required database hackery
 

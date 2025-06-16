@@ -10,6 +10,7 @@
 
 module Bot
   ( bot,
+    BotConfig (..)
   )
 where
 
@@ -44,6 +45,10 @@ import Telegram.Bot.Monadic
 import Text.Hamlet (ihamlet, ihamletFile)
 import Text.Shakespeare.I18N (Lang)
 import Util
+import Text.ICalendar (printICalendar)
+import Data.Default (Default(def))
+
+newtype BotConfig = BotConfig { icsDirectory :: Maybe FilePath }
 
 type AppChannel = Maybe (Chan AppSchedule)
 
@@ -115,7 +120,8 @@ garageStep ::
   Maybe MessageId ->
   ClientM MessageId
 garageStep langs pool chat@ChatChannel {..} msgId = do
-  garages <- runInPool pool $ selectList [] []
+  disabledGarages <- fmap (disabledGarageGarage . entityVal) <$> runInPool pool (selectList [] [])
+  garages <- runInPool pool (selectList [GarageId /<-. disabledGarages] [])
   let grid =
         [ [(__ garageName, "garage_" <> showSqlKey gid)]
           | Entity gid (Garage {..}) <- garages
@@ -787,8 +793,8 @@ setOpenDays langs pool chat day' gid = do
         )
       . fmap (L.sort . mapMaybe parseGregorian)
 
-lockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> Maybe Day -> GarageId -> ClientM ()
-lockSchedule _langs pool ChatChannel {..} appChannel day' gid = do
+lockSchedule :: [Lang] -> BotConfig -> ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> Maybe Day -> GarageId -> ClientM ()
+lockSchedule _langs (BotConfig {icsDirectory}) pool ChatChannel {..} appChannel day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
@@ -799,10 +805,19 @@ lockSchedule _langs pool ChatChannel {..} appChannel day' gid = do
     updateWhere selector [OpenDayAvailable =. False]
   workingSchedule <- getWorkingSchedule pool day gid
   subscriptions <- runInPool pool (selectList [] [] >>= mapM (get . adminUser . entityVal))
+  schedule <- getSchedule pool day gid
   forM_ appChannel $ \chan -> do
-    schedule <- getSchedule pool day gid
     liftIO $ writeChan chan $ mkAppSchedule garageName schedule
   updateWorkingSchedule pool False day gid `catchError` (liftIO . hPrint stderr)
+
+  case icsDirectory of
+    Nothing -> pure ()
+    Just dir -> do
+      now <- liftIO getCurrentTime
+      zone <- liftIO getCurrentTimeZone
+      schedule <- getSchedule pool day gid
+      let ical = iCalendar now zone g schedule
+      liftIO $ BS.writeFile (dir ++ "/" ++ T.unpack garageName ++ ".ics") $ printICalendar def ical
   asyncClientM_ $ forM_ (catMaybes subscriptions) $ \(TelegramUser suid _ _ _) -> forM_ ["en", "ru"] $ \lang -> ignoreError $ do
     void $
       send
@@ -925,8 +940,8 @@ untilTrue [] = pure ()
 untilTrue (a : as) =
   a >>= flip when (untilTrue as) . not
 
-bot :: ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> TimeOfDay -> ClientM ()
-bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel reminderTime = forever $ do
+bot :: BotConfig -> ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> TimeOfDay -> ClientM ()
+bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel reminderTime = forever $ do
   upd <- getUpdate channelUpdateChannel
   let user =
         case upd of
@@ -970,7 +985,7 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel remin
                       >>= mapM_ (setOpenDays langs pool chat Nothing . entityKey)
                     )
                     $> True
-                Just "/lock" -> (runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs pool chat appChannel Nothing . entityKey)) $> True
+                Just "/lock" -> (runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs botConfig pool chat appChannel Nothing . entityKey)) $> True
                 Just "/workingschedule" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
                   runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (nextWeekStart today) . entityKey)
@@ -1018,7 +1033,7 @@ bot pool chat@ChatChannel {channelChatId, channelUpdateChannel} appChannel remin
                     cancelSlot pool appChannel $ readSqlKey t
                     pure True
                   ["admin", "setopendays", g, d] -> setOpenDays langs pool chat (parseGregorian d) (readSqlKey g) $> True
-                  ["admin", "lock", g, d] -> lockSchedule langs pool chat appChannel (parseGregorian d) (readSqlKey g) $> True
+                  ["admin", "lock", g, d] -> lockSchedule langs botConfig pool chat appChannel (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "unlock", g, d] -> unlockSchedule langs pool chat (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "editgarage", g] -> garageMenu langs pool chat (Just $ readSqlKey g) $> True
                   ["admin", "disablegarage", g] -> do

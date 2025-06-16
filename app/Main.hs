@@ -10,7 +10,7 @@
 
 module Main where
 
-import Bot (bot)
+import Bot (bot, BotConfig (..))
 import Control.Concurrent ( threadDelay, newChan )
 import Control.Concurrent.Async (async)
 import Control.Monad.Error.Class (MonadError (catchError))
@@ -40,18 +40,21 @@ main = do
   Just token <- getEnv "PARKI_AR_MINDA_TELEGRAM_TOKEN"
   database <- getEnvDefault "PARKI_AR_MINDA_DATABASE" "database.sqlite"
 
+  botConfig <- BotConfig
+    <$> getEnv "PARKI_AR_MINDA_ICS_DIRECTORY"
+
   appUrl <- getEnv "PARKI_AR_MINDA_APP_URL"
   appToken <- getEnv "PARKI_AR_MINDA_APP_TOKEN"
+
+  let appConfig = case (appUrl, appToken) of
+        (Just a, Just t) -> Just $ AppConfig (pack a) (pack t)
+        _ -> Nothing
 
   reminderConfig <- ReminderConfig
     <$> (parseTimeOfDay <$> getEnvDefault "PARKI_AR_MINDA_REQUESTS_TIME" "12:00:00")
     <*> (parseTimeOfDay <$> getEnvDefault "PARKI_AR_MINDA_REMINDERS_TIME" "18:00:00")
     <*> (parseDayOfWeek <$> getEnvDefault "PARKI_AR_MINDA_OPEN_DAY_REMINDERS_DAY" "Wednesday")
     <*> (parseTimeOfDay <$> getEnvDefault "PARKI_AR_MINDA_OPEN_DAY_REMINDERS_TIME" "12:00:00")
-
-  let appConfig = case (appUrl, appToken) of
-        (Just a, Just t) -> Just $ AppConfig (pack a) (pack t)
-        _ -> Nothing
 
   pool <- runNoLoggingT $ createSqlitePool (pack database) 1000
   migrate pool
@@ -78,5 +81,5 @@ main = do
     runTelegramIntegrationBot
       token'
       ( \chat ->
-          bot pool chat appChannel (requestsTime reminderConfig) `catchError` (\e -> liftIO (hPrint stderr e) >> fail (show e))
+          bot botConfig pool chat appChannel (requestsTime reminderConfig) `catchError` (\e -> liftIO (hPrint stderr e) >> fail (show e))
       )

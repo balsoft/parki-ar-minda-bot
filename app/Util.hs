@@ -9,17 +9,34 @@
 module Util where
 
 import Control.Concurrent (Chan)
+import Control.Concurrent.Async
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.Except
+import Control.Monad.IO.Class
 import Control.Monad.Reader (ReaderT)
+import Control.Monad.Reader.Class (ask)
+import Data.ByteString qualified
+import Data.ByteString.Lazy (ByteString)
+import Data.Default (def)
+import Data.Either (fromRight)
 import Data.Functor ((<&>))
-import qualified Data.List
-import Data.Maybe (catMaybes, maybeToList, fromMaybe)
+import Data.List qualified
+import Data.Map (fromList)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, maybeToList)
 import Data.Text (Text, pack, unpack)
-import Data.Text.Lazy (toStrict)
-import Data.Time (Day, TimeOfDay, dayOfWeek, showGregorian)
+import Data.Text.Encoding (encodeUtf8)
+import Data.Text.Lazy (fromStrict, toStrict)
+import Data.Time
+  ( Day,
+    TimeOfDay,
+    TimeZone,
+    UTCTime,
+    dayOfWeek,
+    showGregorian,
+    toGregorian,
+  )
 import Data.Time.Calendar (DayOfWeek (Monday))
+import Data.Time.Clock (diffTimeToPicoseconds)
 import Data.Time.Format.ISO8601
   ( FormatExtension (ExtendedFormat),
     calendarFormat,
@@ -27,25 +44,29 @@ import Data.Time.Format.ISO8601
     formatShow,
     hourMinuteFormat,
   )
+import Data.Time.LocalTime (LocalTime (LocalTime), localTimeToUTC, sinceMidnight)
+import Data.Time.Parsers qualified as DTP
+import Data.UUID (fromString, toText)
+import Data.UUID.V5 (generateNamed)
 import Database.Persist
 import Database.Persist.Sql
 import GHC.Conc (threadDelay)
+import GHC.Float (double2Float)
+import GHC.IO.Handle.FD (stderr)
 import I18N
+import Network.URI (URI (URI), URIAuth (URIAuth), parseURI)
 import Persist
 import Servant.Client (ClientM, runClientM)
 import Symbols
+import System.IO (hPrint)
 import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Hamlet
+import Text.ICalendar.Printer (printICalendar)
+import Text.ICalendar.Types (DTEnd (DTEndDateTime), DTStamp (DTStamp), DTStart (DTStartDateTime), DateTime (UTCDateTime), Description (Description), EventStatus (ConfirmedEvent, TentativeEvent), Geo (Geo), Location (Location), Organizer (Organizer), Priority (Priority), Summary (Summary), TimeTransparency (Transparent), UID (UID), VCalendar (vcEvents), VEvent (..))
+import Text.Parsec (parse)
 import Text.Shakespeare.I18N (Lang)
 import Text.Shakespeare.Text (lt)
-import Control.Monad.Reader.Class (ask)
-import Control.Concurrent.Async
-import System.IO (hPrint)
-import GHC.IO.Handle.FD (stderr)
-import Data.Either (fromRight)
-import Text.Parsec (parse)
-import qualified Data.Time.Parsers as DTP
 
 instance MonadFail ClientM where
   fail e = liftIO (hPrint stderr e) >> liftIO (fail e)
@@ -53,7 +74,7 @@ instance MonadFail ClientM where
 ignoreError :: (MonadIO m, MonadError a m, Show a) => m () -> m ()
 ignoreError = flip catchError (liftIO . hPrint stderr)
 
-(+-+) :: ToIHamlet t => Text -> t -> IHamlet
+(+-+) :: (ToIHamlet t) => Text -> t -> IHamlet
 symbol +-+ stuff = [ihamlet|#{symbol} ^{__ stuff}|]
 
 ik :: [[InlineKeyboardButton]] -> SomeReplyMarkup
@@ -122,10 +143,10 @@ reply (Message {messageChat = Chat {chatId}, messageMessageId}) langs rpl =
         sendMessageReplyToMessageId = Just messageMessageId
       }
 
-ignoreUntilRight :: Monad m => m (Either a b) -> m b
+ignoreUntilRight :: (Monad m) => m (Either a b) -> m b
 ignoreUntilRight = (`untilRight` (const $ pure ()))
 
-iterateUntilRight :: Monad m => a -> (a -> m (Either a b)) -> m b
+iterateUntilRight :: (Monad m) => a -> (a -> m (Either a b)) -> m b
 iterateUntilRight value action =
   action value >>= \case
     Left value' -> iterateUntilRight value' action
@@ -148,10 +169,10 @@ getCallbackQueryWithData channelUpdateChannel =
 showHourMinutes :: TimeOfDay -> Text
 showHourMinutes = pack . formatShow (hourMinuteFormat ExtendedFormat)
 
-parseHourMinutesM :: MonadFail m => Text -> m TimeOfDay
+parseHourMinutesM :: (MonadFail m) => Text -> m TimeOfDay
 parseHourMinutesM = formatParseM (hourMinuteFormat ExtendedFormat) . unpack
 
-parseGregorian :: MonadFail m => Text -> m Day
+parseGregorian :: (MonadFail m) => Text -> m Day
 parseGregorian = formatParseM (calendarFormat ExtendedFormat) . unpack
 
 thisWeekStart :: Day -> Day
@@ -234,7 +255,7 @@ getWeek pool weekStart garage = do
 
 -- | Merge intersecting intervals together
 -- | This assumes that all intervals are valid, i.e. (start, end) | start <= end
-mergeIntervals :: Ord a => [(a, a)] -> [(a, a)]
+mergeIntervals :: (Ord a) => [(a, a)] -> [(a, a)]
 mergeIntervals slots = go (Data.List.sort slots)
   where
     go [] = []
@@ -338,19 +359,28 @@ makeButtons langs grid = ik (fmap (\(text, callback) -> ikb (defaultRender langs
 
 -- | Flatten all slots which are completed
 flattenSlots ::
-  MonadIO m =>
+  (MonadIO m) =>
   ConnectionPool ->
   m
-    [ ( Text, -- | Name of the garage
-        Text, -- | Date of the slot
-        Text, -- | Starting time
-        Text, -- | End time
-        Text, -- | Volunteer's name
-        Text, -- | Volunteer's handle
-        Text, -- | Slot state
-        Text  -- | The amount of visitors (if available)
+    [ ( Text,
+        -- \| Name of the garage
+        Text,
+        -- \| Date of the slot
+        Text,
+        -- \| Starting time
+        Text,
+        -- \| End time
+        Text,
+        -- \| Volunteer's name
+        Text,
+        -- \| Volunteer's handle
+        Text,
+        -- \| Slot state
+        Text
       )
     ]
+-- \| The amount of visitors (if available)
+
 flattenSlots pool = runInPool pool $ do
   slots <- selectList [] []
   forM slots $ \(Entity _ ScheduledSlot {..}) -> do
@@ -358,7 +388,8 @@ flattenSlots pool = runInPool pool $ do
       Nothing -> pure (dm, dm, dm, dm, dm, dm, dm, dm)
       Just (OpenDay {openDayGarage, openDayDate}) -> do
         Just (Garage {garageName}) <- get openDayGarage
-        (fullName, userName) <- get scheduledSlotUser >>= \case
+        (fullName, userName) <-
+          get scheduledSlotUser >>= \case
             Nothing -> pure (dm, dm)
             Just (Volunteer {volunteerUser}) ->
               get volunteerUser >>= \case
@@ -368,8 +399,9 @@ flattenSlots pool = runInPool pool $ do
               (ScheduledSlotChecklistComplete v) -> Just v
               _ -> Nothing
         pure (garageName, pack $ showGregorian openDayDate, showHourMinutes scheduledSlotStartTime, showHourMinutes scheduledSlotEndTime, fullName, userName, renderStateText scheduledSlotState, pack $ maybe "" show visitors)
+  where
+    dm = "<deleted>"
 
-  where dm = "<deleted>"
 renderStateText :: ScheduledSlotState -> Text
 renderStateText ScheduledSlotCreated = "Created"
 renderStateText ScheduledSlotAwaitingConfirmation {} = "Awaiting Confirmation"
@@ -377,6 +409,80 @@ renderStateText ScheduledSlotUnconfirmed = "Unconfirmed"
 renderStateText ScheduledSlotConfirmed = "Confirmed"
 renderStateText ScheduledSlotFinished {} = "Finished"
 renderStateText ScheduledSlotChecklistComplete {} = "Completed"
+
+namespaceParkiArMinda = fromJust $ fromString "c285d7f8-1dbe-4fbd-9115-4f0c7700664f"
+
+iCalendar :: UTCTime -> TimeZone -> Garage -> [(Day, [(TimeOfDay, TimeOfDay)])] -> VCalendar
+iCalendar now zone (Garage {..}) slots =
+  ( def
+      { vcEvents =
+          fromList
+            [ ((fromStrict $ toText uuid, Nothing), event)
+              | (day, subslots) <- slots,
+                (start, end) <- subslots,
+                let (y, m, d) = toGregorian day,
+                let diffSeconds d = fromIntegral (diffTimeToPicoseconds (sinceMidnight d) `div` 10 ^ 12),
+                -- UUID is generated deterministically from garage name and event datetime
+                let uuid = generateNamed guuid [fromIntegral y, fromIntegral m, fromIntegral d, diffSeconds start, diffSeconds end],
+                let event =
+                      VEvent
+                        { veDTStamp = DTStamp now def,
+                          veUID = UID (fromStrict $ toText uuid) def,
+                          veClass = def,
+                          veDTStart = Just (DTStartDateTime (UTCDateTime (localTimeToUTC zone $ LocalTime day start)) def),
+                          veCreated = def,
+                          veGeo = def,
+                          veDescription =
+                            Just $
+                              Description ("The " <> fromStrict garageName <> " garage is open") Nothing Nothing def,
+                          veLastMod = Nothing,
+                          veLocation =
+                            Just $
+                              Text.ICalendar.Types.Location
+                                (fromStrict (garageName <> " parki ar minda garage\n" <> garageAddress <> "\n" <> garageLink))
+                                Nothing
+                                Nothing
+                                def,
+                          veOrganizer =
+                            Just $
+                              Organizer
+                                (fromJust $ parseURI "MAILTO:parkiarminda@gmail.com")
+                                (Just "parkiarminda@gmail.com")
+                                Nothing
+                                Nothing
+                                Nothing
+                                def,
+                          vePriority = Priority 9 def, -- Least priority
+                          veSeq = def,
+                          veStatus = def,
+                          veSummary =
+                            Just $
+                              Summary ("parki ar minda — " <> fromStrict garageName) Nothing Nothing def,
+                          veTransp = Transparent def,
+                          veUrl = Nothing,
+                          veRecurId = Nothing,
+                          veRRule = def,
+                          veDTEndDuration =
+                            Just $
+                              Left (DTEndDateTime (UTCDateTime (localTimeToUTC zone $ LocalTime day end)) def),
+                          veAttach = def,
+                          veAttendee = def,
+                          veCategories = def,
+                          veComment = def,
+                          veContact = def,
+                          veExDate = def,
+                          veRStatus = def,
+                          veRelated = def,
+                          veResources = def,
+                          veRDate = def,
+                          veAlarms = def,
+                          veOther = def
+                        }
+            ]
+      }
+  )
+  where
+    guuid = generateNamed namespaceParkiArMinda (Data.ByteString.unpack (encodeUtf8 garageName))
 
 asyncClientM_ :: ClientM () -> ClientM ()
 asyncClientM_ c = do
