@@ -54,7 +54,9 @@ There are _OPTIONAL_:
 
 ### Required database hackery
 
-Currently there's no way to add or remove bot admins from the bot itself. You have to manually edit the database.
+Currently there's no way to add or remove bot admins from the bot itself on startup. After starting the bot and sending `/start` to it, you have to manually edit the database.
+
+This is also useful if you accidentally lock yourself out for some reason.
 
 To add an admin, we must:
 

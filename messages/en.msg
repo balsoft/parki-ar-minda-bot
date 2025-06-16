@@ -8,9 +8,11 @@ CommandSetOpenDays: Select days for which the volunteers are able to sign up
 CommandLock: Lock the schedule and display the publishable version
 CommandWorkingSchedule: Show working schedule for next week
 CommandWorkingScheduleThisWeek: Show working schedule for this week
-CommandReport: Generate a csv report of all slots (or [<since>[ <until>]], e.g. `/report 2024 2025`)
+CommandReport: [<since>[ <until>]] Generate a csv report of all slots (or between certain dates), e.g. /report 2024 2025)
 CommandGarages: View, edit or disable garages
 CommandNewGarage: Add a new garage
+CommandVolunteers: List all volunteers
+CommandNewAdmin: <@username> Add a new admin, e.g. /newadmin @foo
 
 Greet: Hello! This is a bot for eco-volunteers to sign up for duty in one of <b>parki ar minda</b> garages in Tbilisi.\nIf you want to learn more about us and what we do, check out @parkiarminda.\nYour application to become a volunteer is currently being evaluated by administrators. We will notify you when it is granted.
 Volunteer: Congratulations, you are now a volunteer. You can now /subscribe to notifications about scheduling starts and /signup for duty.
@@ -80,6 +82,11 @@ Decline: Decline
 NewVolunteer user@Html: #{user} has been added to the list of volunteers
 Ban: Ban user
 VolunteerRemoved user@Html: #{user} has been removed from the list of volunteers
+NewAdmin user@Html: #{user} has been added to the list of admins
+RemoveAdmin: Remove admin
+Admin: Congratulations, you are now an admin! Check out the <a href="https://github.com/balsoft/parki-ar-minda-bot#usage">instructions for the bot!</a>
+AdminRemoved user@Html: #{user} has been removed from the list of admins
+CantRemove user1@Html user2@Html: #{user1} can't remove #{user2} from the list of admins because #{user1} became an admin later
 
 GarageInfo g@Text: Information about #{g} garage
 GarageName: Name

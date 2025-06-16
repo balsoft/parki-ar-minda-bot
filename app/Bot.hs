@@ -674,6 +674,69 @@ banVolunteer pool appChannel tuid = do
         langs
         [ihamlet|#{allGood} _{MsgVolunteerRemoved (renderUser user)}|]
 
+addAdmin :: ConnectionPool -> Text -> ClientM ()
+addAdmin pool username = do
+  (admins, tuid, adminId, user@TelegramUser {telegramUserLang, telegramUserUserId}) <-
+    runInPool pool $ do
+      Just (Entity tuid user) <- selectFirst [TelegramUserUsername ==. stripPrefix "@" username] []
+      admins <- getAdmins
+      Entity adminId _ <- upsert Admin {adminUser = tuid} []
+      pure (admins, tuid, adminId, user)
+  forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
+    let langs = maybeToList lang
+    void $
+      insertCallbackQueryMessage pool
+        =<< sendWithButtons
+          (ChatId (fromIntegral auid))
+          langs
+          [ihamlet|
+                #{party} _{MsgNewAdmin $ renderUser user}
+              |]
+          [ [ ([ihamlet|#{forbidden} _{MsgRemoveAdmin}|], "admin_remove_admin_" <> showSqlKey adminId)
+            ]
+          ]
+  void $
+    send
+      (ChatId (fromIntegral telegramUserUserId))
+      (maybeToList telegramUserLang)
+      [ihamlet|#{party} _{MsgAdmin}|]
+
+tryRemoveAdmin :: ConnectionPool -> AdminId -> AdminId -> ClientM ()
+tryRemoveAdmin pool myid otherid = do
+  if myid <= otherid then do
+    user <- runInPool pool $ do
+      Just (Admin {..}) <- get otherid
+      Just user <- get adminUser
+      delete otherid
+      pure user
+
+    admins <- runInPool pool getAdmins
+
+    forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
+      let langs = maybeToList lang
+      void $ send
+            (ChatId (fromIntegral auid))
+            langs
+            [ihamlet|
+                  _{MsgAdminRemoved $ renderUser user}
+                |]
+  else do
+    (user1, user2, admins) <- runInPool pool $ do
+      Just (Admin {..}) <- get myid
+      Just user1 <- get adminUser
+      Just (Admin {..}) <- get otherid
+      Just user2 <- get adminUser
+      admins <- getAdmins
+      pure (user1, user2, admins)
+    forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
+      let langs = maybeToList lang
+      void $ send
+            (ChatId (fromIntegral auid))
+            langs
+            [ihamlet|
+                  _{MsgCantRemove (renderUser user1) (renderUser user2)}
+                |]
+
 checkbox :: Bool -> Text
 checkbox False = "☐"
 checkbox True = "☑"
@@ -919,7 +982,9 @@ adminCommands =
     ("workingschedulethisweek", MsgCommandWorkingScheduleThisWeek),
     ("report", MsgCommandReport),
     ("garages", MsgCommandGarages),
-    ("newgarage", MsgCommandNewGarage)
+    ("newgarage", MsgCommandNewGarage),
+    ("volunteers", MsgCommandVolunteers),
+    ("newadmin", MsgCommandNewAdmin)
   ]
 
 setCommands :: [(Text, BotMessage)] -> ChatChannel -> ClientM ()
@@ -975,7 +1040,7 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
           )
       let langs = maybeToList telegramUserLang
 
-      let adminHandler = \case
+      let adminHandler adminId = \case
             SomeNewMessage Message {..} ->
               case messageText of
                 Just "/start" -> send channelChatId [] [ihamlet|Welcome, admin!|] $> True
@@ -1000,6 +1065,24 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                 Just "/newgarage" -> do
                   garageMenu langs pool chat Nothing
                   pure True
+                Just "/volunteers" -> do
+                  volunteers <- runInPool pool $ selectList [] []
+                  forM_ volunteers $ \(Entity _ (Volunteer {..})) -> do
+                    Just user <- runInPool pool $ get volunteerUser
+                    void $
+                      insertCallbackQueryMessage pool
+                        =<< sendWithButtons
+                          channelChatId
+                          langs
+                          [ihamlet|
+                                #{renderUser user}
+                              |]
+                          [ [ ([ihamlet|#{forbidden} _{MsgBan}|], "ban_" <> showSqlKey volunteerUser)
+                            ]
+                          ]
+                  pure True
+                ((>>= stripPrefix "/newadmin ") -> Just username) -> do
+                  addAdmin pool username $> True
                 ((>>= stripPrefix "/report" >=> pure . T.splitOn " ") -> Just lst) -> do
                   let (start, end) =
                         case lst of
@@ -1031,7 +1114,10 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                     void $ deleteMessage channelChatId messageMessageId
                     pure True
                   ["admin", "ban", t] -> do
-                    banVolunteer pool appChannel $ read $ unpack t
+                    banVolunteer pool appChannel $ readSqlKey t
+                    pure True
+                  ["admin", "remove", "admin", t] -> do
+                    tryRemoveAdmin pool adminId $ readSqlKey t
                     pure True
                   ["admin", "cancel", t] -> do
                     void $ deleteMessage channelChatId messageMessageId
@@ -1149,12 +1235,12 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
       let runHandlers h = untilTrue (h ++ [failHandler upd])
 
       runInPool pool ((,) <$> getBy (UniqueAdmin dbUserId) <*> getBy (UniqueVolunteer dbUserId)) >>= \case
-        (Just (Entity _ _), Just (Entity volunteer _)) -> do
+        (Just (Entity admin _), Just (Entity volunteer _)) -> do
           setCommands (adminCommands ++ volunteerCommands) chat
-          runHandlers [volunteerHandler volunteer upd, adminHandler upd]
-        (Just (Entity _ _), Nothing) -> do
+          runHandlers [volunteerHandler volunteer upd, adminHandler admin upd]
+        (Just (Entity admin _), Nothing) -> do
           setCommands adminCommands chat
-          runHandlers [adminHandler upd]
+          runHandlers [adminHandler admin upd]
         (Nothing, Just (Entity volunteer _)) -> do
           setCommands volunteerCommands chat
           runHandlers [volunteerHandler volunteer upd]

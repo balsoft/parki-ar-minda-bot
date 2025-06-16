@@ -43,7 +43,7 @@
             telegram-bot-simple = prev.telegram-bot-simple.overrideAttrs (_: {
               src = "${telegram-bot-simple}/telegram-bot-simple";
             });
-            iCalendar = prev.callCabal2nix "iCalendar" iCalendar { };
+            iCalendar = jailbreakUnbreak (prev.callCabal2nix "iCalendar" iCalendar { });
           })
         ];
 

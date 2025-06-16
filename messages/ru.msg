@@ -8,9 +8,11 @@ CommandSetOpenDays: Выбрать, на какие дни волонтеры м
 CommandLock: Заморозить расписание и получить его
 CommandWorkingSchedule: Показать рабочее расписание на следующую неделю
 CommandWorkingScheduleThisWeek: Показать рабочее расписание на текущую неделю
-CommandReport: Сгенерировать отчёт о всех дежурствах в csv-формате
+CommandReport: [<от> [<до>]] Сгенерировать отчёт о всех дежурствах (или только между определенными датами) в csv-формате, например /report 2025
 CommandGarages: Посмотреть или изменить список гаражей
 CommandNewGarage: Добавить новый гараж
+CommandVolunteers: Список волонтёров
+CommandNewAdmin: <@username> Добавить нового админа, например /newadmin @foo
 
 Greet: Привет! Это бот для эко-волонтеров, через который вы можете записаться на дежурство в один из гаражей <b>parki ar minda</b> в Тбилиси.\nЕсли вы хотите узнать больше о нас, взгляните на наш канал @parkiarminda.\nНаши администраторы сейчас рассматривают вашу кандидатуру на волонтерство. Мы напишем вам, когда её одобрят.
 Volunteer: Поздравляем, теперь вы — волонтёр! Вы можете подписаться на напоминания о возможности подежурить (/subscribe) и записаться на дежурство (/signup).
@@ -80,6 +82,11 @@ Decline: Отклонить
 NewVolunteer user@Html: #{user} был добавлен в список волонтёров
 Ban: Заблокировать пользователя
 VolunteerRemoved user@Html: #{user} был удалён из списка волонтёров
+NewAdmin user@Html: #{user} теперь админ!
+RemoveAdmin: Удалить админа
+Admin: Поздравляем, теперь вы админ! Можете почитать <a href="https://github.com/balsoft/parki-ar-minda-bot#usage">инструкцию к боту!</a>
+AdminRemoved user@Html: #{user} больше не админ
+CantRemove user1@Html user2@Html: #{user1} не может удалить #{user2} из списка админов, потому что #{user1} стал админом позже.
 
 GarageInfo g@Text: Информация о гараже #{g}
 GarageName: Название
