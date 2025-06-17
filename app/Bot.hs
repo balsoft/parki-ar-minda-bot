@@ -63,9 +63,8 @@ insertCallbackQueryMessage _ r = pure r
 deleteCallbackQueryMessages :: ConnectionPool -> Text -> ClientM ()
 deleteCallbackQueryMessages pool d = do
   messages <- runInPool pool $ selectList [CallbackQueryMultiChatCallbackQuery ==. d] []
-  forM_ messages $ \(Entity _ CallbackQueryMultiChat {..}) -> do
+  forM_ messages $ \(Entity _ CallbackQueryMultiChat {..}) -> flip catchError (pure . pure ()) $ do
     void (deleteMessage (ChatId $ fromIntegral callbackQueryMultiChatChatId) (MessageId $ fromIntegral callbackQueryMultiChatMsgId))
-      `catchError` const (pure ())
   runInPool pool $ deleteWhere [CallbackQueryMultiChatMsgId <-. fmap (callbackQueryMultiChatMsgId . entityVal) messages]
 
 -- | Generate a grid of buttons for choosing a time
@@ -113,6 +112,11 @@ menuStep langs ChatChannel {..} (Just msgId) msg grid =
     (const $ pure ())
     $> msgId
 
+getGarages :: MonadIO m => ReaderT SqlBackend m [Entity Garage]
+getGarages = do
+  disabledGarages <- fmap (disabledGarageGarage . entityVal) <$> selectList [] []
+  selectList [GarageId /<-. disabledGarages] []
+
 garageStep ::
   [Lang] ->
   ConnectionPool ->
@@ -120,8 +124,7 @@ garageStep ::
   Maybe MessageId ->
   ClientM MessageId
 garageStep langs pool chat@ChatChannel {..} msgId = do
-  disabledGarages <- fmap (disabledGarageGarage . entityVal) <$> runInPool pool (selectList [] [])
-  garages <- runInPool pool (selectList [GarageId /<-. disabledGarages] [])
+  garages <- runInPool pool getGarages
   let grid =
         [ [(__ garageName, "garage_" <> showSqlKey gid)]
           | Entity gid (Garage {..}) <- garages
@@ -464,13 +467,12 @@ unsubscribe langs ChatChannel {channelChatId} uid pool = do
 
 deleteUser :: ConnectionPool -> AppChannel -> VolunteerId -> ClientM ()
 deleteUser pool appChannel vid = do
-  slots <- runInPool pool $ selectList [ScheduledSlotUser ==. vid] []
+  slots <- runInPool pool $ selectList [ScheduledSlotUser ==. vid, ScheduledSlotState <-. [ScheduledSlotCreated, ScheduledSlotAwaitingConfirmation True, ScheduledSlotAwaitingConfirmation False]] []
   forM_ slots $ \(Entity slotId _) -> cancelSlot pool appChannel slotId
   runInPool pool $ do
     Just Volunteer {..} <- get vid
     deleteBy $ UniqueSubscription volunteerUser
     delete vid
-    delete volunteerUser
 
 askDeleteUser ::
   [Lang] -> ChatChannel -> AppChannel -> VolunteerId -> ConnectionPool -> ClientM ()
@@ -646,10 +648,10 @@ allowVolunteer pool tuid = do
           [ihamlet|
                 #{party} _{MsgNewVolunteer $ renderUser user}
               |]
-          [ [ ([ihamlet|#{forbidden} _{MsgBan}|], "ban_" <> showSqlKey tuid)
+          [ [ ([ihamlet|#{forbidden} _{MsgBan}|], "admin_ban_" <> showSqlKey tuid)
             ]
           ]
-  deleteCallbackQueryMessages pool ("allow_" <> showSqlKey tuid)
+  deleteCallbackQueryMessages pool ("admin_allow_" <> showSqlKey tuid)
   void $
     send
       (ChatId (fromIntegral telegramUserUserId))
@@ -665,7 +667,7 @@ banVolunteer pool appChannel tuid = do
       admins <- getAdmins
       pure (admins, user, volunteer)
   deleteUser pool appChannel (entityKey volunteer)
-  deleteCallbackQueryMessages pool ("ban_" <> showSqlKey tuid)
+  deleteCallbackQueryMessages pool ("admin_ban_" <> showSqlKey tuid)
   forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
     let langs = maybeToList lang
     void $
@@ -1053,11 +1055,11 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                 Just "/lock" -> (runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs botConfig pool chat appChannel Nothing . entityKey)) $> True
                 Just "/workingschedule" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
-                  runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (nextWeekStart today) . entityKey)
+                  runInPool pool getGarages >>= mapM_ (updateWorkingSchedule pool True (nextWeekStart today) . entityKey)
                   pure True
                 Just "/workingschedulethisweek" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
-                  runInPool pool (selectList [] []) >>= mapM_ (updateWorkingSchedule pool True (thisWeekStart today) . entityKey)
+                  runInPool pool getGarages >>= mapM_ (updateWorkingSchedule pool True (thisWeekStart today) . entityKey)
                   pure True
                 Just "/garages" -> do
                   runInPool pool (selectList [] []) >>= mapM_ (\(Entity gid (Garage {..})) -> sendGarageInfo langs pool chat gid)
@@ -1077,7 +1079,7 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                           [ihamlet|
                                 #{renderUser user}
                               |]
-                          [ [ ([ihamlet|#{forbidden} _{MsgBan}|], "ban_" <> showSqlKey volunteerUser)
+                          [ [ ([ihamlet|#{forbidden} _{MsgBan}|], "admin_ban_" <> showSqlKey volunteerUser)
                             ]
                           ]
                   pure True
@@ -1240,7 +1242,7 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
           runHandlers [volunteerHandler volunteer upd, adminHandler admin upd]
         (Just (Entity admin _), Nothing) -> do
           setCommands adminCommands chat
-          runHandlers [adminHandler admin upd]
+          runHandlers [newUserHandler upd, adminHandler admin upd]
         (Nothing, Just (Entity volunteer _)) -> do
           setCommands volunteerCommands chat
           runHandlers [volunteerHandler volunteer upd]
