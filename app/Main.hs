@@ -64,7 +64,7 @@ main = do
       forever $ do
         void $
           async $
-            catchError (printError =<< defaultRunBot token' (reminderBot pool reminderConfig)) (hPrint stderr)
+            catchError (printError =<< defaultRunBot token' (reminderBot pool botConfig reminderConfig)) (hPrint stderr)
         threadDelay $ 60 * 1000000
 
   appChannel <- forM appConfig $ \config -> do

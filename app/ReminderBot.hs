@@ -32,8 +32,8 @@ data ReminderConfig = ReminderConfig
     openDayRemindersTime :: TimeOfDay
   }
 
-sendConfirmationRequests :: ConnectionPool -> LocalTime -> ClientM ()
-sendConfirmationRequests pool now = do
+sendConfirmationRequests :: ConnectionPool -> BotConfig -> LocalTime -> ClientM ()
+sendConfirmationRequests pool botConfig now = do
   let tomorrow = succ $ localDay now
   tomorrow' <- runInPool pool $ selectList [OpenDayDate ==. tomorrow] []
   slotsConfirmationRequestNotSent <-
@@ -62,10 +62,10 @@ sendConfirmationRequests pool now = do
           ],
           [(__ MsgCantCome, "cancel_" <> showSqlKey slotId)]
         ]
-  unless (null slotsConfirmationRequestNotSent) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
+  unless (null slotsConfirmationRequestNotSent) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool botConfig False . entityKey
 
-sendConfirmationReminders :: ConnectionPool -> LocalTime -> ClientM ()
-sendConfirmationReminders pool now = do
+sendConfirmationReminders :: ConnectionPool -> BotConfig -> LocalTime -> ClientM ()
+sendConfirmationReminders pool botConfig now = do
   let tomorrow = succ $ localDay now
   tomorrow' <- runInPool pool $ selectList [OpenDayDate ==. tomorrow] []
   slotsNotConfirmed <-
@@ -96,10 +96,10 @@ sendConfirmationReminders pool now = do
           [(__ MsgCantCome, "cancel_" <> showSqlKey slotId)]
         ]
 
-  unless (null slotsNotConfirmed) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool False . entityKey
+  unless (null slotsNotConfirmed) $ forM_ tomorrow' $ updateWorkingScheduleForDay pool botConfig False . entityKey
 
-notifyUnconfirmedSlots :: ConnectionPool -> LocalTime -> ClientM ()
-notifyUnconfirmedSlots pool now = do
+notifyUnconfirmedSlots :: ConnectionPool -> BotConfig -> LocalTime -> ClientM ()
+notifyUnconfirmedSlots pool botConfig now = do
   let today = localDay now
   today' <- runInPool pool $ selectList [OpenDayDate ==. today] []
   slotsNotConfirmed <-
@@ -126,7 +126,7 @@ notifyUnconfirmedSlots pool now = do
             ^{slotFullDesc}
           |]
           [[(__ MsgSlotCancel, "admin_cancel_" <> showSqlKey slotId)]]
-  unless (null slotsNotConfirmed) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
+  unless (null slotsNotConfirmed) $ forM_ today' $ updateWorkingScheduleForDay pool botConfig False . entityKey
 
 sendLastReminders :: ConnectionPool -> LocalTime -> ClientM ()
 sendLastReminders pool now = do
@@ -159,8 +159,8 @@ sendLastReminders pool now = do
           ^{slotDesc}
         |]
 
-sendChecklist :: ConnectionPool -> LocalTime -> ClientM ()
-sendChecklist pool now = do
+sendChecklist :: ConnectionPool -> BotConfig -> LocalTime -> ClientM ()
+sendChecklist pool botConfig now = do
   let today = localDay now
   today' <- runInPool pool $ selectList [OpenDayDate ==. today] []
   slotsFinished <-
@@ -189,7 +189,7 @@ sendChecklist pool now = do
             }
     runInPool pool $
       update slotId [ScheduledSlotState =. ScheduledSlotFinished (fromIntegral mid)]
-  unless (null slotsFinished) $ forM_ today' $ updateWorkingScheduleForDay pool False . entityKey
+  unless (null slotsFinished) $ forM_ today' $ updateWorkingScheduleForDay pool botConfig False . entityKey
 
 sendOpenDayReminder :: ConnectionPool -> LocalTime -> ClientM ()
 sendOpenDayReminder pool now = do
@@ -213,16 +213,16 @@ sendOpenDayReminder pool now = do
               | (Entity gid garage) <- garages
             ]
 
-reminderBot :: ConnectionPool -> ReminderConfig -> ClientM ()
-reminderBot pool (ReminderConfig {..}) = do
+reminderBot :: ConnectionPool -> BotConfig -> ReminderConfig -> ClientM ()
+reminderBot pool botConfig (ReminderConfig {..}) = do
   now <- zonedTimeToLocalTime <$> liftIO getZonedTime
   when (localTimeOfDay now >= requestsTime) $
-    sendConfirmationRequests pool now
+    sendConfirmationRequests pool botConfig now
   when (localTimeOfDay now >= remindersTime) $
-    sendConfirmationReminders pool now
-  notifyUnconfirmedSlots pool now
+    sendConfirmationReminders pool botConfig now
+  notifyUnconfirmedSlots pool botConfig now
   sendLastReminders pool now
-  sendChecklist pool now
+  sendChecklist pool botConfig now
   when
     ( dayOfWeek (localDay now) == openDayRemindersDay
         && localTimeOfDay now >= openDayRemindersTime

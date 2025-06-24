@@ -36,7 +36,7 @@ import Data.Time
     dayOfWeek,
     getZonedTime,
     showGregorian,
-    toGregorian,
+    toGregorian, getCurrentTime, getCurrentTimeZone,
   )
 import Data.Time.Calendar (DayOfWeek (Monday))
 import Data.Time.Clock (diffTimeToPicoseconds)
@@ -70,6 +70,10 @@ import Text.ICalendar.Types (DTEnd (DTEndDateTime), DTStamp (DTStamp), DTStart (
 import Text.Parsec (parse)
 import Text.Shakespeare.I18N (Lang)
 import Text.Shakespeare.Text (lt)
+import qualified Data.ByteString.Lazy as BS
+import qualified Data.Text as T
+
+newtype BotConfig = BotConfig { icsDirectory :: Maybe FilePath }
 
 instance MonadFail ClientM where
   fail e = liftIO (hPrint stderr e) >> liftIO (fail e)
@@ -305,8 +309,8 @@ getWorkingSchedule pool weekStart garage = do
 checkLocked :: ConnectionPool -> Day -> GarageId -> ClientM Bool
 checkLocked pool weekStart garage = not . all (\(Entity _ OpenDay {openDayAvailable}) -> openDayAvailable) <$> getWeek pool weekStart garage
 
-updateWorkingSchedule :: ConnectionPool -> Bool -> Day -> GarageId -> ClientM ()
-updateWorkingSchedule pool recreate weekStart garage = do
+updateWorkingSchedule :: ConnectionPool -> BotConfig -> Bool -> Day -> GarageId -> ClientM ()
+updateWorkingSchedule pool BotConfig {..} recreate weekStart garage = do
   admins <- runInPool pool (selectList [] [] >>= mapM (get . adminUser . entityVal))
   Just g <- runInPool pool $ get garage
   isLocked <- checkLocked pool weekStart garage
@@ -347,15 +351,36 @@ updateWorkingSchedule pool recreate weekStart garage = do
         forM_ msgs $ \(Entity _ CallbackQueryMultiChat {..}) -> do
           flip catchError (liftIO . hPrint stderr) $ void $ deleteMessage (ChatId (fromIntegral auid)) (MessageId $ fromIntegral callbackQueryMultiChatMsgId)
           runInPool pool $ deleteWhere [CallbackQueryMultiChatChatId ==. auid, CallbackQueryMultiChatMsgId ==. callbackQueryMultiChatMsgId]
+  case icsDirectory of
+    Nothing -> pure ()
+    Just dir -> do
+      now <- liftIO getCurrentTime
+      zone <- liftIO getCurrentTimeZone
+      today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
+      schedule <-
+        runInPool pool $ do
+          selectList [OpenDayGarage ==. garage, OpenDayDate >=. today] []
+            >>= mapM
+              ( \(Entity openDay OpenDay {..}) -> do
+                  slots <- runInPool pool $ selectList [ScheduledSlotDay ==. openDay] []
+                  pure
+                    ( openDayDate,
+                      [ (scheduledSlotStartTime, scheduledSlotEndTime)
+                        | Entity _ ScheduledSlot {..} <- slots
+                      ]
+                    )
+              )
+      let ical = iCalendar now zone g schedule
+      liftIO $ BS.writeFile (dir ++ "/" ++ T.unpack (garageName g) ++ ".ics") $ printICalendar def ical
 
-updateWorkingScheduleForDay :: ConnectionPool -> Bool -> OpenDayId -> ClientM ()
-updateWorkingScheduleForDay pool recreate dayId = do
+updateWorkingScheduleForDay :: ConnectionPool -> BotConfig -> Bool -> OpenDayId -> ClientM ()
+updateWorkingScheduleForDay pool botConfig recreate dayId = do
   (weekStart, gid) <-
     runInPool pool $ do
       Just OpenDay {..} <- get dayId
       let weekStart = thisWeekStart openDayDate
       pure (weekStart, openDayGarage)
-  updateWorkingSchedule pool recreate weekStart gid
+  updateWorkingSchedule pool botConfig recreate weekStart gid
 
 makeButtons :: [Lang] -> [[(IHamlet, Text)]] -> SomeReplyMarkup
 makeButtons langs grid = ik (fmap (\(text, callback) -> ikb (defaultRender langs text) callback) <$> grid)
@@ -435,7 +460,7 @@ iCalendar now zone (Garage {..}) slots =
           fromList
             [ ((fromStrict $ toText uuid, Nothing), event)
               | (day, subslots) <- slots,
-                (start, end) <- subslots,
+                (start, end) <- mergeIntervals subslots,
                 let (y, m, d) = toGregorian day,
                 let diffSeconds d = fromIntegral (diffTimeToPicoseconds (sinceMidnight d) `div` 10 ^ 12),
                 -- UUID is generated deterministically from garage name and event datetime

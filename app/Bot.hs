@@ -48,7 +48,6 @@ import Util
 import Text.ICalendar (printICalendar)
 import Data.Default (Default(def))
 
-newtype BotConfig = BotConfig { icsDirectory :: Maybe FilePath }
 
 type AppChannel = Maybe (Chan AppSchedule)
 
@@ -395,6 +394,7 @@ cancelSlotButton slotId =
 slotCreated ::
   [Lang] ->
   ConnectionPool ->
+  BotConfig ->
   ChatChannel ->
   Maybe MessageId ->
   VolunteerId ->
@@ -403,7 +403,7 @@ slotCreated ::
   TimeOfDay ->
   TimeOfDay ->
   ClientM MessageId
-slotCreated langs pool chat@ChatChannel {..} msgId volunteer day startTime endTime reminderTime = do
+slotCreated langs pool botConfig chat@ChatChannel {..} msgId volunteer day startTime endTime reminderTime = do
   slotId <-
     runInPool
       pool
@@ -438,7 +438,7 @@ slotCreated langs pool chat@ChatChannel {..} msgId volunteer day startTime endTi
       |]
       [[cancelSlotButton slotId]]
   menuStep langs chat Nothing (__ MsgAnotherSlot) [[(__ MsgAnotherGarage, "signup")], [(__ MsgSameGarage, "garage_" <> showSqlKey openDayGarage)], [(__ MsgDone, "cancel")]]
-    <* updateWorkingSchedule pool False (thisWeekStart openDayDate) openDayGarage
+    <* updateWorkingSchedule pool botConfig False (thisWeekStart openDayDate) openDayGarage
     `catchError` (liftIO . hPrint stderr)
 
 list :: [Lang] -> ChatChannel -> VolunteerId -> ConnectionPool -> ClientM ()
@@ -465,18 +465,18 @@ unsubscribe langs ChatChannel {channelChatId} uid pool = do
   void $ runInPool pool $ deleteBy $ UniqueSubscription uid
   void $ send channelChatId langs [ihamlet|#{allGood} _{MsgUnsubscribed}|]
 
-deleteUser :: ConnectionPool -> AppChannel -> VolunteerId -> ClientM ()
-deleteUser pool appChannel vid = do
+deleteUser :: ConnectionPool -> BotConfig -> AppChannel -> VolunteerId -> ClientM ()
+deleteUser pool botConfig appChannel vid = do
   slots <- runInPool pool $ selectList [ScheduledSlotUser ==. vid, ScheduledSlotState <-. [ScheduledSlotCreated, ScheduledSlotAwaitingConfirmation True, ScheduledSlotAwaitingConfirmation False]] []
-  forM_ slots $ \(Entity slotId _) -> cancelSlot pool appChannel slotId
+  forM_ slots $ \(Entity slotId _) -> cancelSlot pool botConfig appChannel slotId
   runInPool pool $ do
     Just Volunteer {..} <- get vid
     deleteBy $ UniqueSubscription volunteerUser
     delete vid
 
 askDeleteUser ::
-  [Lang] -> ChatChannel -> AppChannel -> VolunteerId -> ConnectionPool -> ClientM ()
-askDeleteUser langs chat@ChatChannel {channelChatId} appChannel volunteer pool = do
+  [Lang] -> BotConfig -> ChatChannel -> AppChannel -> VolunteerId -> ConnectionPool -> ClientM ()
+askDeleteUser langs botConfig chat@ChatChannel {channelChatId} appChannel volunteer pool = do
   Just Volunteer {volunteerUser} <- runInPool pool $ get volunteer
   Just TelegramUser {telegramUserUserId} <- runInPool pool $ get volunteerUser
   when (channelChatId == ChatId (fromIntegral telegramUserUserId)) $ do
@@ -485,12 +485,12 @@ askDeleteUser langs chat@ChatChannel {channelChatId} appChannel volunteer pool =
     untilRight (getNewMessage chat) (const $ pure ()) >>= \case
       Message {messageText = Just txt}
         | txt == MsgIAmSure |-> langs -> do
-            deleteUser pool appChannel volunteer
+            deleteUser pool botConfig appChannel volunteer
             void $ send channelChatId langs (allGood +-+ MsgDeleted)
       _ -> void $ send channelChatId langs (attention +-+ MsgNotDeleting)
 
-cancelSlot :: ConnectionPool -> Maybe (Chan AppSchedule) -> ScheduledSlotId -> ClientM ()
-cancelSlot pool appChannel slotId = do
+cancelSlot :: ConnectionPool -> BotConfig -> Maybe (Chan AppSchedule) -> ScheduledSlotId -> ClientM ()
+cancelSlot pool botConfig appChannel slotId = do
   (slot, slotDesc, dayAvailable, langs, TelegramUser {..}, gid, garageName, weekStart) <-
     runInPool pool $ do
       Just slot <- get slotId
@@ -520,7 +520,7 @@ cancelSlot pool appChannel slotId = do
   forM_ appChannel $ \chan -> do
     schedule <- getSchedule pool weekStart gid
     liftIO $ writeChan chan $ mkAppSchedule garageName schedule
-  updateWorkingSchedule pool False weekStart gid `catchError` (liftIO . hPrint stderr)
+  updateWorkingSchedule pool botConfig False weekStart gid `catchError` (liftIO . hPrint stderr)
   admins <- runInPool pool getAdmins
   unless dayAvailable $
     forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
@@ -538,12 +538,13 @@ cancelSlot pool appChannel slotId = do
 askCancelSlot ::
   [Lang] ->
   ConnectionPool ->
+  BotConfig ->
   ChatChannel ->
   Maybe (Chan AppSchedule) ->
   MessageId ->
   ScheduledSlotId ->
   ClientM Bool
-askCancelSlot langs pool ChatChannel {..} appChannel originalMsgId slotId = do
+askCancelSlot langs pool botConfig ChatChannel {..} appChannel originalMsgId slotId = do
   Just slot <- runInPool pool $ get slotId
   Just volunteer <- runInPool pool $ get (scheduledSlotUser slot)
   Just TelegramUser {telegramUserUserId} <- runInPool pool $ get (volunteerUser volunteer)
@@ -583,23 +584,24 @@ askCancelSlot langs pool ChatChannel {..} appChannel originalMsgId slotId = do
       void $ deleteMessage channelChatId (messageMessageId msg)
       when doCancel $ do
         flip catchError (liftIO . hPrint stderr) $ void $ deleteMessage channelChatId originalMsgId
-        cancelSlot pool appChannel slotId
+        cancelSlot pool botConfig appChannel slotId
       pure doCancel
     else pure False
 
 confirmSlot ::
   [Lang] ->
   ConnectionPool ->
+  BotConfig ->
   ChatChannel ->
   MessageId ->
   ScheduledSlotId ->
   ClientM ()
-confirmSlot langs pool ChatChannel {..} originalMsgId slotId = do
+confirmSlot langs pool botConfig ChatChannel {..} originalMsgId slotId = do
   Just slot <- runInPool pool $ get slotId
   slotDesc <- runInPool pool $ getSlotDesc slot
   void $ deleteMessage channelChatId originalMsgId
   runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotConfirmed]
-  updateWorkingScheduleForDay pool False (scheduledSlotDay slot)
+  updateWorkingScheduleForDay pool botConfig False (scheduledSlotDay slot)
   void $
     sendWithButtons
       channelChatId
@@ -658,15 +660,15 @@ allowVolunteer pool tuid = do
       (maybeToList telegramUserLang)
       [ihamlet|#{party} _{MsgVolunteer}|]
 
-banVolunteer :: ConnectionPool -> AppChannel -> TelegramUserId -> ClientM ()
-banVolunteer pool appChannel tuid = do
+banVolunteer :: ConnectionPool -> BotConfig -> AppChannel -> TelegramUserId -> ClientM ()
+banVolunteer pool botConfig appChannel tuid = do
   (admins, user, volunteer) <-
     runInPool pool $ do
       Just user <- get tuid
       Just volunteer <- getBy $ UniqueVolunteer tuid
       admins <- getAdmins
       pure (admins, user, volunteer)
-  deleteUser pool appChannel (entityKey volunteer)
+  deleteUser pool botConfig appChannel (entityKey volunteer)
   deleteCallbackQueryMessages pool ("admin_ban_" <> showSqlKey tuid)
   forM_ admins $ \(TelegramUser auid lang _ _) -> ignoreError $ do
     let langs = maybeToList lang
@@ -797,11 +799,11 @@ inlinePoll ChatChannel {..} langs acceptable question grid initial = do
           _ -> a >> getPollResult lst
   getPollResult initial <* deleteMessage channelChatId (messageMessageId msg)
 
-sendOpenDaySchedule :: ConnectionPool -> Day -> GarageId -> [Entity OpenDay] -> ClientM ()
-sendOpenDaySchedule pool weekStart garage days = do
+sendOpenDaySchedule :: ConnectionPool -> BotConfig -> Day -> GarageId -> [Entity OpenDay] -> ClientM ()
+sendOpenDaySchedule pool botConfig weekStart garage days = do
   subs <- runInPool pool (selectList [] [] >>= mapM (get . subscriptionUser . entityVal))
   Just g@Garage {..} <- runInPool pool $ get garage
-  updateWorkingSchedule pool False weekStart garage `catchError` (liftIO . hPrint stderr)
+  updateWorkingSchedule pool botConfig False weekStart garage `catchError` (liftIO . hPrint stderr)
   asyncClientM_ $ forM_ (catMaybes subs) $ \(TelegramUser uid lang _ _) -> ignoreError $ do
     let langs = maybeToList lang
     catchError
@@ -819,8 +821,8 @@ sendOpenDaySchedule pool weekStart garage days = do
       )
       (liftIO . hPrint stderr)
 
-setOpenDays :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()
-setOpenDays langs pool chat day' gid = do
+setOpenDays :: [Lang] -> ConnectionPool -> BotConfig -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()
+setOpenDays langs pool botConfig chat day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
@@ -854,12 +856,12 @@ setOpenDays langs pool chat day' gid = do
                         [OpenDayAvailable =. True]
                   )
                   days
-              sendOpenDaySchedule pool day gid updatedDays
+              sendOpenDaySchedule pool botConfig day gid updatedDays
         )
       . fmap (L.sort . mapMaybe parseGregorian)
 
 lockSchedule :: [Lang] -> BotConfig -> ConnectionPool -> ChatChannel -> Maybe (Chan AppSchedule) -> Maybe Day -> GarageId -> ClientM ()
-lockSchedule _langs (BotConfig {icsDirectory}) pool ChatChannel {..} appChannel day' gid = do
+lockSchedule _langs botConfig pool ChatChannel {..} appChannel day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
@@ -873,16 +875,8 @@ lockSchedule _langs (BotConfig {icsDirectory}) pool ChatChannel {..} appChannel 
   schedule <- getSchedule pool day gid
   forM_ appChannel $ \chan -> do
     liftIO $ writeChan chan $ mkAppSchedule garageName schedule
-  updateWorkingSchedule pool False day gid `catchError` (liftIO . hPrint stderr)
+  updateWorkingSchedule pool botConfig False day gid `catchError` (liftIO . hPrint stderr)
 
-  case icsDirectory of
-    Nothing -> pure ()
-    Just dir -> do
-      now <- liftIO getCurrentTime
-      zone <- liftIO getCurrentTimeZone
-      schedule <- getSchedule pool day gid
-      let ical = iCalendar now zone g schedule
-      liftIO $ BS.writeFile (dir ++ "/" ++ T.unpack garageName ++ ".ics") $ printICalendar def ical
   asyncClientM_ $ forM_ (catMaybes subscriptions) $ \(TelegramUser suid _ _ _) -> forM_ ["en", "ru"] $ \lang -> ignoreError $ do
     void $
       send
@@ -891,8 +885,8 @@ lockSchedule _langs (BotConfig {icsDirectory}) pool ChatChannel {..} appChannel 
         (renderChatSchedule g workingSchedule)
     liftIO $ threadDelay 500000
 
-unlockSchedule :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()
-unlockSchedule _langs pool ChatChannel {..} day' gid = do
+unlockSchedule :: [Lang] -> ConnectionPool -> BotConfig -> ChatChannel -> Maybe Day -> GarageId -> ClientM ()
+unlockSchedule _langs pool botConfig ChatChannel {..} day' gid = do
   day <- liftIO $ case day' of
     Just d -> pure d
     Nothing -> nextWeekStart . localDay . zonedTimeToLocalTime <$> getZonedTime
@@ -900,7 +894,7 @@ unlockSchedule _langs pool ChatChannel {..} day' gid = do
   let nextWeek = take 7 [day ..]
   let selector = [OpenDayGarage ==. gid, OpenDayDate <-. nextWeek]
   days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
-  sendOpenDaySchedule pool day gid days
+  sendOpenDaySchedule pool botConfig day gid days
 
 garageMenu :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe GarageId -> ClientM ()
 garageMenu langs pool chat@(ChatChannel {..}) garage = do
@@ -1049,17 +1043,17 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                 Just "/setopendays" -> do
                   disabledGarages <- fmap (disabledGarageGarage . entityVal) <$> runInPool pool (selectList [] [])
                   ( runInPool pool (selectList [GarageId /<-. disabledGarages] [])
-                      >>= mapM_ (setOpenDays langs pool chat Nothing . entityKey)
+                      >>= mapM_ (setOpenDays langs pool botConfig chat Nothing . entityKey)
                     )
                     $> True
                 Just "/lock" -> (runInPool pool (selectList [] []) >>= mapM_ (lockSchedule langs botConfig pool chat appChannel Nothing . entityKey)) $> True
                 Just "/workingschedule" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
-                  runInPool pool getGarages >>= mapM_ (updateWorkingSchedule pool True (nextWeekStart today) . entityKey)
+                  runInPool pool getGarages >>= mapM_ (updateWorkingSchedule pool botConfig True (nextWeekStart today) . entityKey)
                   pure True
                 Just "/workingschedulethisweek" -> do
                   today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
-                  runInPool pool getGarages >>= mapM_ (updateWorkingSchedule pool True (thisWeekStart today) . entityKey)
+                  runInPool pool getGarages >>= mapM_ (updateWorkingSchedule pool botConfig True (thisWeekStart today) . entityKey)
                   pure True
                 Just "/garages" -> do
                   runInPool pool (selectList [] []) >>= mapM_ (\(Entity gid (Garage {..})) -> sendGarageInfo langs pool chat gid)
@@ -1097,7 +1091,7 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                   _ <- sendDocument (toSendDocument (SomeChatId channelChatId) $ DocumentFile file "application/csv")
                   liftIO $ removeFile file
                   pure True
-                ((>>= stripPrefix "/cancel_") -> Just t) -> cancelSlot pool appChannel (readSqlKey t) $> True
+                ((>>= stripPrefix "/cancel_") -> Just t) -> cancelSlot pool botConfig appChannel (readSqlKey t) $> True
                 _ -> pure False
             SomeNewCallbackQuery
               CallbackQuery
@@ -1116,18 +1110,18 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                     void $ deleteMessage channelChatId messageMessageId
                     pure True
                   ["admin", "ban", t] -> do
-                    banVolunteer pool appChannel $ readSqlKey t
+                    banVolunteer pool botConfig appChannel $ readSqlKey t
                     pure True
                   ["admin", "remove", "admin", t] -> do
                     tryRemoveAdmin pool adminId $ readSqlKey t
                     pure True
                   ["admin", "cancel", t] -> do
                     void $ deleteMessage channelChatId messageMessageId
-                    cancelSlot pool appChannel $ readSqlKey t
+                    cancelSlot pool botConfig appChannel $ readSqlKey t
                     pure True
-                  ["admin", "setopendays", g, d] -> setOpenDays langs pool chat (parseGregorian d) (readSqlKey g) $> True
+                  ["admin", "setopendays", g, d] -> setOpenDays langs pool botConfig chat (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "lock", g, d] -> lockSchedule langs botConfig pool chat appChannel (parseGregorian d) (readSqlKey g) $> True
-                  ["admin", "unlock", g, d] -> unlockSchedule langs pool chat (parseGregorian d) (readSqlKey g) $> True
+                  ["admin", "unlock", g, d] -> unlockSchedule langs pool botConfig chat (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "editgarage", g] -> garageMenu langs pool chat (Just $ readSqlKey g) $> True
                   ["admin", "disablegarage", g] -> do
                     void $ runInPool pool $ insert (DisabledGarage $ readSqlKey g)
@@ -1164,14 +1158,14 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                 Just "/list" -> list langs chat volunteer pool $> True
                 Just "/subscribe" -> subscribe langs chat dbUserId pool $> True
                 Just "/unsubscribe" -> unsubscribe langs chat dbUserId pool $> True
-                Just "/delete" -> askDeleteUser langs chat appChannel volunteer pool $> True
+                Just "/delete" -> askDeleteUser langs botConfig chat appChannel volunteer pool $> True
                 Just text -> case messageReplyToMessage of
                   Just (Message {messageMessageId = MessageId mid}) ->
                     runInPool pool (selectFirst [ScheduledSlotState ==. ScheduledSlotFinished (fromIntegral mid)] []) >>= \case
                       Just (Entity slotId ScheduledSlot {..}) -> case readMay (unpack text) of
                         Just visitors -> do
                           runInPool pool $ update slotId [ScheduledSlotState =. ScheduledSlotChecklistComplete {visitors}]
-                          updateWorkingScheduleForDay pool False scheduledSlotDay
+                          updateWorkingScheduleForDay pool botConfig False scheduledSlotDay
                           void $ reply m langs (__ MsgAck)
                           pure True
                         Nothing -> pure False
@@ -1210,14 +1204,14 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                           selectList [ScheduledSlotDay ==. day, ScheduledSlotUser ==. volunteer] []
                             <&> filter (\(Entity _ ScheduledSlot {..}) -> timesIntersect (scheduledSlotStartTime, scheduledSlotEndTime) (startTime, endTime))
                         pure $ concat conflicts
-                    forM_ slots (cancelSlot pool appChannel . entityKey)
-                    void $ slotCreated langs pool chat (Just messageMessageId) volunteer (readSqlKey d) startTime endTime reminderTime
+                    forM_ slots (cancelSlot pool botConfig appChannel . entityKey)
+                    void $ slotCreated langs pool botConfig chat (Just messageMessageId) volunteer (readSqlKey d) startTime endTime reminderTime
                     pure True
-                  ["create", d, s, e] -> slotCreated langs pool chat (Just messageMessageId) volunteer (readSqlKey d) (fromJust $ parseHourMinutesM s) (fromJust $ parseHourMinutesM e) reminderTime $> True
+                  ["create", d, s, e] -> slotCreated langs pool botConfig chat (Just messageMessageId) volunteer (readSqlKey d) (fromJust $ parseHourMinutesM s) (fromJust $ parseHourMinutesM e) reminderTime $> True
                   ["cancel", t] ->
-                    askCancelSlot langs pool chat appChannel messageMessageId (readSqlKey t) $> True
+                    askCancelSlot langs pool botConfig chat appChannel messageMessageId (readSqlKey t) $> True
                   ["confirm", d] ->
-                    confirmSlot langs pool chat messageMessageId (readSqlKey d) $> True
+                    confirmSlot langs pool botConfig chat messageMessageId (readSqlKey d) $> True
                   _ -> pure False
             _ -> pure False
 
