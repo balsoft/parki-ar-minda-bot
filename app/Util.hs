@@ -5,6 +5,8 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Move guards forward" #-}
 
 module Util where
 
@@ -453,6 +455,7 @@ renderStateText ScheduledSlotChecklistComplete {} = "Completed"
 
 namespaceParkiArMinda = fromJust $ fromString "c285d7f8-1dbe-4fbd-9115-4f0c7700664f"
 
+-- | Get an ICalendar representation of a schedule
 iCalendar :: UTCTime -> TimeZone -> Garage -> [(Day, [(TimeOfDay, TimeOfDay)])] -> VCalendar
 iCalendar now zone (Garage {..}) slots =
   ( def
@@ -480,8 +483,8 @@ iCalendar now zone (Garage {..}) slots =
                           veLocation =
                             Just $
                               Text.ICalendar.Types.Location
-                                (fromStrict (garageName <> " parki ar minda garage\n" <> garageAddress <> "\n" <> garageLink))
-                                Nothing
+                                (fromStrict (garageName <> " parki ar minda garage\n" <> garageAddress<>"\n"<>garageLink))
+                                (parseURI (T.unpack garageLink))
                                 Nothing
                                 def,
                           veOrganizer =
