@@ -82,11 +82,29 @@
         "type": "github"
       }
     },
+    "persistent": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1750955646,
+        "narHash": "sha256-eL0Oi06tGKYGvIEEUctVr/K2FykjeliYsQxTVxyYe0I=",
+        "owner": "balsoft",
+        "repo": "persistent",
+        "rev": "22ba92680ad866a221d7facb162c38cbafeccb5a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "balsoft",
+        "ref": "balsoft/sqlite-fix-migrations",
+        "repo": "persistent",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
         "iCalendar": "iCalendar",
         "nixpkgs": "nixpkgs",
+        "persistent": "persistent",
         "telegram-bot-monadic": "telegram-bot-monadic",
         "telegram-bot-simple": "telegram-bot-simple_2"
       }

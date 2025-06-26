@@ -92,6 +92,7 @@ GarageInfo g@Text: Information about #{g} garage
 GarageName: Name
 GarageAddress: Address
 GarageLink: Link
+GarageColor: Color
 
 Enable: Enable
 Disable: Disable

@@ -6,6 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 {-# HLINT ignore "Move guards forward" #-}
 
 module Util where
@@ -19,13 +20,16 @@ import Control.Monad.Reader (ReaderT)
 import Control.Monad.Reader.Class (ask)
 import qualified Data.ByteString
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as BS
 import Data.Default (def)
 import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import qualified Data.List
 import Data.Map (fromList)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, maybeToList)
+import qualified Data.Set
 import Data.Text (Text, pack, splitOn, unpack)
+import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Data.Text.Lazy (fromStrict, toStrict)
 import Data.Time
@@ -36,9 +40,11 @@ import Data.Time
     UTCTime,
     ZonedTime (zonedTimeToLocalTime),
     dayOfWeek,
+    getCurrentTime,
+    getCurrentTimeZone,
     getZonedTime,
     showGregorian,
-    toGregorian, getCurrentTime, getCurrentTimeZone,
+    toGregorian,
   )
 import Data.Time.Calendar (DayOfWeek (Monday))
 import Data.Time.Clock (diffTimeToPicoseconds)
@@ -68,14 +74,12 @@ import Telegram.Bot.API
 import Telegram.Bot.Monadic
 import Text.Hamlet
 import Text.ICalendar.Printer (printICalendar)
-import Text.ICalendar.Types (DTEnd (DTEndDateTime), DTStamp (DTStamp), DTStart (DTStartDateTime), DateTime (UTCDateTime), Description (Description), EventStatus (ConfirmedEvent, TentativeEvent), Geo (Geo), Location (Location), Organizer (Organizer), Priority (Priority), Summary (Summary), TimeTransparency (Transparent), UID (UID), VCalendar (vcEvents), VEvent (..))
+import Text.ICalendar.Types (DTEnd (DTEndDateTime), DTStamp (DTStamp), DTStart (DTStartDateTime), DateTime (UTCDateTime), Description (Description), EventStatus (ConfirmedEvent, TentativeEvent), Geo (Geo), Location (Location), Organizer (Organizer), OtherProperty (OtherProperty), Priority (Priority), Summary (Summary), TimeTransparency (Transparent), UID (UID), VCalendar (vcEvents, vcOther), VEvent (..))
 import Text.Parsec (parse)
 import Text.Shakespeare.I18N (Lang)
 import Text.Shakespeare.Text (lt)
-import qualified Data.ByteString.Lazy as BS
-import qualified Data.Text as T
 
-newtype BotConfig = BotConfig { icsDirectory :: Maybe FilePath }
+newtype BotConfig = BotConfig {icsDirectory :: Maybe FilePath}
 
 instance MonadFail ClientM where
   fail e = liftIO (hPrint stderr e) >> liftIO (fail e)
@@ -459,7 +463,13 @@ namespaceParkiArMinda = fromJust $ fromString "c285d7f8-1dbe-4fbd-9115-4f0c77006
 iCalendar :: UTCTime -> TimeZone -> Garage -> [(Day, [(TimeOfDay, TimeOfDay)])] -> VCalendar
 iCalendar now zone (Garage {..}) slots =
   ( def
-      { vcEvents =
+      { vcOther =
+          Data.Set.fromList $
+            [ OtherProperty "X-WR-CALNAME" calName def,
+              OtherProperty "NAME" calName def
+            ]
+              <> maybe [] (\c -> pure $ OtherProperty "COLOR" (BS.fromStrict $ encodeUtf8 c) def) garageColor,
+        vcEvents =
           fromList
             [ ((fromStrict $ toText uuid, Nothing), event)
               | (day, subslots) <- slots,
@@ -483,7 +493,7 @@ iCalendar now zone (Garage {..}) slots =
                           veLocation =
                             Just $
                               Text.ICalendar.Types.Location
-                                (fromStrict (garageName <> " parki ar minda garage\n" <> garageAddress<>"\n"<>garageLink))
+                                (fromStrict (garageName <> " parki ar minda garage\n" <> garageAddress <> "\n" <> garageLink))
                                 (parseURI (T.unpack garageLink))
                                 Nothing
                                 def,
@@ -527,6 +537,7 @@ iCalendar now zone (Garage {..}) slots =
   )
   where
     guuid = generateNamed namespaceParkiArMinda (Data.ByteString.unpack (encodeUtf8 garageName))
+    calName = "parki ar minda - " <> BS.fromStrict (encodeUtf8 garageName)
 
 asyncClientM_ :: ClientM () -> ClientM ()
 asyncClientM_ c = do

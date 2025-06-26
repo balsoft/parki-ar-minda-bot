@@ -13,6 +13,10 @@
     telegram-bot-simple.flake = false;
     iCalendar.url = "github:chrra/iCalendar";
     iCalendar.flake = false;
+    persistent = {
+      url = "github:balsoft/persistent?ref=balsoft/sqlite-fix-migrations";
+      flake = false;
+    };
   };
 
   outputs =
@@ -23,6 +27,7 @@
       telegram-bot-monadic,
       telegram-bot-simple,
       iCalendar,
+      persistent,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -44,6 +49,10 @@
               src = "${telegram-bot-simple}/telegram-bot-simple";
             });
             iCalendar = jailbreakUnbreak (prev.callCabal2nix "iCalendar" iCalendar { });
+
+            persistent-sqlite = prev.persistent-sqlite.overrideAttrs (_: {
+              src = persistent + /persistent-sqlite;
+            });
           })
         ];
 
@@ -68,6 +77,7 @@
             haskellPackages.haskell-language-server # you must build it with your ghc to work
             ghcid
             # cabal-install
+            sqlite-interactive
           ];
           inputsFrom = [ self.packages.${system}.default.env ];
         };

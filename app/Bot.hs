@@ -26,7 +26,7 @@ import Data.Csv
 import Data.Functor (($>), (<&>))
 import Data.List ((\\))
 import qualified Data.List as L
-import Data.Maybe (fromJust, isJust, mapMaybe, maybeToList, catMaybes)
+import Data.Maybe (fromJust, isJust, mapMaybe, maybeToList, catMaybes, fromMaybe)
 import Data.Text as T (Text, pack, replace, splitOn, stripPrefix, unpack)
 import Data.Text.IO (hPutStrLn)
 import Data.Time
@@ -899,9 +899,10 @@ unlockSchedule _langs pool botConfig ChatChannel {..} day' gid = do
 garageMenu :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe GarageId -> ClientM ()
 garageMenu langs pool chat@(ChatChannel {..}) garage = do
   g <- join <$> mapM (runInPool pool . get) garage
-  newName <- askFor [ihamlet|#{house}<u>_{MsgGarageName}</u>?|] (garageName <$> g)
-  newAddress <- askFor [ihamlet|#{pin}<u>_{MsgGarageAddress}</u>?|] (garageAddress <$> g)
-  newLink <- askFor [ihamlet|#{link}<u>_{MsgGarageLink}</u>?|] (garageLink <$> g)
+  newName <- askFor [ihamlet|#{house}<u>_{MsgGarageName}</u>?|] $ catMaybes [garageName <$> g]
+  newAddress <- askFor [ihamlet|#{pin}<u>_{MsgGarageAddress}</u>?|] $ catMaybes [garageAddress <$> g]
+  newLink <- askFor [ihamlet|#{link}<u>_{MsgGarageLink}</u>?|] $ catMaybes [garageLink <$> g]
+  newColor <- askFor [ihamlet|🎨 <u>_{MsgGarageColor}</u> (use <code>None</code> to keep empty)|] $ catMaybes [garageColor =<< g, Just "None"]
   void $ sendMessage
     ( defSendMessage
         (SomeChatId channelChatId)
@@ -913,8 +914,8 @@ garageMenu langs pool chat@(ChatChannel {..}) garage = do
 
   gid <-
     maybe
-      (runInPool pool $ insert (Garage newName newAddress newLink))
-      (\g -> runInPool pool $ update g [GarageName =. newName, GarageAddress =. newAddress, GarageLink =. newLink] $> g)
+      (runInPool pool $ insert (Garage newName newAddress newLink (Just newColor)))
+      (\g -> runInPool pool $ update g [GarageName =. newName, GarageAddress =. newAddress, GarageLink =. newLink, GarageColor =. case newColor of "None" -> Nothing; c -> Just c] $> g)
       garage
   sendGarageInfo langs pool chat gid
   where
@@ -926,7 +927,9 @@ garageMenu langs pool chat@(ChatChannel {..}) garage = do
               (defaultRender langs thing)
           )
             { sendMessageParseMode = Just HTML,
-              sendMessageReplyMarkup = (\txt -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing Nothing Nothing]] (Just False) (Just False) Nothing Nothing Nothing)) <$> def
+              sendMessageReplyMarkup = Just $ case def of
+                [] ->  SomeReplyKeyboardRemove (ReplyKeyboardRemove True Nothing)
+                defs -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing Nothing Nothing] | txt <- defs] (Just False) (Just False) Nothing Nothing Nothing)
             }
       ignoreUntilRight
         ( getUpdate channelUpdateChannel >>= \case
@@ -954,9 +957,13 @@ sendGarageInfo langs pool (ChatChannel {..}) gid = do
 #{house}<u>_{MsgGarageName}</u>: #{garageName}
 #{pin}<u>_{MsgGarageAddress}</u>: #{garageAddress}
 #{link}<u>_{MsgGarageLink}</u>: #{garageLink}
+🎨 <u>_{MsgGarageColor}</u>: ^{showColor garageColor}
       |]
       [[([ihamlet|#{change} _{MsgEdit}|], "admin_editgarage_" <> showSqlKey gid)], enableDisableButton]
   void $ runInPool pool $ insert (CallbackQueryMultiChat (fromIntegral cid) (fromIntegral mid) ("admin_garage_" <> showSqlKey gid))
+  where
+    showColor (Just c) = [ihamlet|#{c}|]
+    showColor Nothing = [ihamlet|<i>None</i>|]
 
 knownLangs :: [Text]
 knownLangs = ["en", "ru"]

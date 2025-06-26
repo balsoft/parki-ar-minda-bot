@@ -92,6 +92,7 @@ Garage
     address Text
     link Text
     UniqueGarage name
+    color Text Maybe
     deriving Show
 DisabledGarage -- Separate table to remove the need for migrations
     garage GarageId
