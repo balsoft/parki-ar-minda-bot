@@ -963,7 +963,7 @@ sendGarageInfo langs pool (ChatChannel {..}) gid = do
   void $ runInPool pool $ insert (CallbackQueryMultiChat (fromIntegral cid) (fromIntegral mid) ("admin_garage_" <> showSqlKey gid))
   where
     showColor (Just c) = [ihamlet|#{c}|]
-    showColor Nothing = [ihamlet|<i>None</i>|]
+    showColor Nothing = [ihamlet|<i>None|]
 
 knownLangs :: [Text]
 knownLangs = ["en", "ru"]
