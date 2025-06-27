@@ -10,18 +10,18 @@ The easiest way to build this is with Nix.
 
 <details>
   <summary>If you know Nix</summary>
-  ```sh
-  nix build github:balsoft/parki-ar-minda-bot
-  ```
+  <code>
+    nix build github:balsoft/parki-ar-minda-bot
+  </code>
 </details>
 
 1. [Get Nix](https://nixos.org/download/) if not already installed
 2. Enable flakes: `mkdir -p ~/.config/nix && echo 'experimental-features = nix-command flakes' >> ~/.config/nix/nix.conf` if not already enabled
 3. Clone the repo: `git clone https://github.com/balsoft/parki-ar-minda-bot && cd parki-ar-minda-bot`
 4. Build:
-  a. Just build it: `nix build`; the binary will be in `./result/bin/parki-ar-minda-bot`
-  b. **OR** get a shell from which you can run it: `nix shell`
-  c. **OR** build a static binary that can run without Nix on **any Linux system**: `nix build .#parki-ar-minda-bot-static`; the binary will be in `./result/bin/parki-ar-minda-bot`
+    * Just build it: `nix build`; the binary will be in `./result/bin/parki-ar-minda-bot`
+    * **OR** get a shell from which you can run it: `nix shell`
+    * **OR** build a static binary that can run without Nix on **any Linux system**: `nix build .#parki-ar-minda-bot-static`; the binary will be in `./result/bin/parki-ar-minda-bot`
 5. Deploy: copy the static executable from previous step to any Linux box & find a way to launch it (systemd, initscript, etc).
 
 ## Running
@@ -42,7 +42,7 @@ These are **REQUIRED**:
 There are _OPTIONAL_:
 
 |Variable name|Default value|Description|Example|
-|:-:|:-:|:-:|
+|:-:|:-:|:-:|:-:|
 |`PARKI_AR_MINDA_DATABASE`|`database.sqlite`|A path (absolute or relative to PWD) to an sqlite3 database. The database will be created if it does not exist. Migrations are applied to the database automatically. You should back up the database periodically and before updates, in case things go wrong|`./database2.sqlite`|
 |`PARKI_AR_MINDA_REQUESTS_TIME`|`12:00:00`|A time at which requests to confirm the slot are sent (on the day before the slot)|`13:00:00`|
 |`PARKI_AR_MINDA_REMINDERS_TIME`|`18:00:00`|A time at which reminders to confirm the slot and warnings that the slot isn't confirmed are sent (on the day before the slot)|`19:00:00`|
