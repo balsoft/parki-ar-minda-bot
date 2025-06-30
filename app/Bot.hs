@@ -896,13 +896,13 @@ unlockSchedule _langs pool botConfig ChatChannel {..} day' gid = do
   days <- runInPool pool (updateWhere selector [OpenDayAvailable =. True] >> selectList selector [])
   sendOpenDaySchedule pool botConfig day gid days
 
-garageMenu :: [Lang] -> ConnectionPool -> ChatChannel -> Maybe GarageId -> ClientM ()
-garageMenu langs pool chat@(ChatChannel {..}) garage = do
+garageMenu :: [Lang] -> BotConfig -> ConnectionPool -> ChatChannel -> Maybe GarageId -> ClientM ()
+garageMenu langs botConfig pool chat@(ChatChannel {..}) garage = do
   g <- join <$> mapM (runInPool pool . get) garage
-  newName <- askFor [ihamlet|#{house}<u>_{MsgGarageName}</u>?|] $ catMaybes [garageName <$> g]
-  newAddress <- askFor [ihamlet|#{pin}<u>_{MsgGarageAddress}</u>?|] $ catMaybes [garageAddress <$> g]
-  newLink <- askFor [ihamlet|#{link}<u>_{MsgGarageLink}</u>?|] $ catMaybes [garageLink <$> g]
-  newColor <- askFor [ihamlet|🎨 <u>_{MsgGarageColor}</u> (use <code>None</code> to keep empty)|] $ catMaybes [garageColor =<< g, Just "None"]
+  newName <- askFor [ihamlet|#{house}<u>_{MsgGarageName}</u>?|] [garageName <$> g]
+  newAddress <- askFor [ihamlet|#{pin}<u>_{MsgGarageAddress}</u>?|] [garageAddress <$> g]
+  newLink <- askFor [ihamlet|#{link}<u>_{MsgGarageLink}</u>?|] [garageLink <$> g]
+  newColor <- askFor [ihamlet|🎨 <u>_{MsgGarageColor}</u> (use <code>None</code> to keep empty)|] [garageColor =<< g, Just "None"]
   void $ sendMessage
     ( defSendMessage
         (SomeChatId channelChatId)
@@ -918,6 +918,8 @@ garageMenu langs pool chat@(ChatChannel {..}) garage = do
       (\g -> runInPool pool $ update g [GarageName =. newName, GarageAddress =. newAddress, GarageLink =. newLink, GarageColor =. case newColor of "None" -> Nothing; c -> Just c] $> g)
       garage
   sendGarageInfo langs pool chat gid
+  today <- thisWeekStart <$> liftIO getToday
+  updateWorkingSchedule pool botConfig False today gid
   where
     askFor thing def = do
       _ <-
@@ -929,7 +931,7 @@ garageMenu langs pool chat@(ChatChannel {..}) garage = do
             { sendMessageParseMode = Just HTML,
               sendMessageReplyMarkup = Just $ case def of
                 [] ->  SomeReplyKeyboardRemove (ReplyKeyboardRemove True Nothing)
-                defs -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing Nothing Nothing] | txt <- defs] (Just False) (Just False) Nothing Nothing Nothing)
+                defs -> SomeReplyKeyboardMarkup (ReplyKeyboardMarkup [[KeyboardButton txt Nothing Nothing Nothing Nothing Nothing Nothing] | txt <- catMaybes defs] (Just False) (Just False) Nothing Nothing Nothing)
             }
       ignoreUntilRight
         ( getUpdate channelUpdateChannel >>= \case
@@ -1066,7 +1068,7 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                   runInPool pool (selectList [] []) >>= mapM_ (\(Entity gid (Garage {..})) -> sendGarageInfo langs pool chat gid)
                   pure True
                 Just "/newgarage" -> do
-                  garageMenu langs pool chat Nothing
+                  garageMenu langs botConfig pool chat Nothing
                   pure True
                 Just "/volunteers" -> do
                   volunteers <- runInPool pool $ selectList [] []
@@ -1129,7 +1131,7 @@ bot botConfig pool chat@ChatChannel {channelChatId, channelUpdateChannel} appCha
                   ["admin", "setopendays", g, d] -> setOpenDays langs pool botConfig chat (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "lock", g, d] -> lockSchedule langs botConfig pool chat appChannel (parseGregorian d) (readSqlKey g) $> True
                   ["admin", "unlock", g, d] -> unlockSchedule langs pool botConfig chat (parseGregorian d) (readSqlKey g) $> True
-                  ["admin", "editgarage", g] -> garageMenu langs pool chat (Just $ readSqlKey g) $> True
+                  ["admin", "editgarage", g] -> garageMenu langs botConfig pool chat (Just $ readSqlKey g) $> True
                   ["admin", "disablegarage", g] -> do
                     void $ runInPool pool $ insert (DisabledGarage $ readSqlKey g)
                     sendGarageInfo langs pool chat $ readSqlKey g

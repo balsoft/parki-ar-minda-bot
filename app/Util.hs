@@ -87,6 +87,9 @@ instance MonadFail ClientM where
 ignoreError :: (MonadIO m, MonadError a m, Show a) => m () -> m ()
 ignoreError = flip catchError (liftIO . hPrint stderr)
 
+getToday :: IO Day
+getToday = localDay . zonedTimeToLocalTime <$> getZonedTime
+
 (+-+) :: (ToIHamlet t) => Text -> t -> IHamlet
 symbol +-+ stuff = [ihamlet|#{symbol} ^{__ stuff}|]
 
@@ -362,7 +365,7 @@ updateWorkingSchedule pool BotConfig {..} recreate weekStart garage = do
     Just dir -> do
       now <- liftIO getCurrentTime
       zone <- liftIO getCurrentTimeZone
-      today <- localDay . zonedTimeToLocalTime <$> liftIO getZonedTime
+      today <- liftIO getToday
       schedule <-
         runInPool pool $ do
           selectList [OpenDayGarage ==. garage, OpenDayDate >=. today] []
